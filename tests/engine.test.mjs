@@ -123,9 +123,10 @@ test('event counter suppresses rapid recrossing during cooldown', () => {
   state.tracks[0].bbox = [40, 0, 20, 20];
   assert.deepEqual(countCrossingEvents(state, line, 1500, 5, 1200), []);
 
-  // The track crosses back during cooldown; the side state updates without counting.
+  // Cross back during cooldown; the stable side updates without counting.
+  state.tracks[0].bbox = [40, 40, 20, 20];
   assert.equal(countCrossingEvents(state, line, 1800, 5, 1200).length, 0);
-  // It crosses again in reverse after cooldown and is counted.
+  // Cross in reverse again after cooldown and count the new transition.
   state.tracks[0].bbox = [40, 0, 20, 20];
   assert.equal(countCrossingEvents(state, line, 2300, 5, 1200).length, 1);
 });
