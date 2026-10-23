@@ -3,6 +3,15 @@ import { Camera, CircleHelp, Pause, Play, RotateCcw, Square } from 'lucide-react
 
 import { createTracker, updateTracks, countCrossingEvents } from './engine/countingCore.mjs';
 import type { Detection } from './types/counting';
+import {
+  createCameraHealthState,
+  startCameraHealth,
+  recordCameraFrame,
+  recordCameraInference,
+  evaluateCameraHealth,
+  stopCameraHealth,
+  getCameraHealthMetrics
+} from './engine/cameraHealth.mjs';
 
 type TrackerState = ReturnType<typeof createTracker>;
 
@@ -37,6 +46,9 @@ export function LiveCounter() {
   const trackerRef = useRef<TrackerState>(createTracker());
   const countsRef = useRef<Record<string, number>>({});
   const directionsRef = useRef({ 'A-to-B': 0, 'B-to-A': 0 });
+  const lastProcessedVideoTimeRef = useRef(Number.NaN);
+  const healthRef = useRef(createCameraHealthState());
+  const [health, setHealth] = useState(() => createCameraHealthState());
 
   const [active, setActive] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -147,6 +159,8 @@ export function LiveCounter() {
     setPaused(false);
     pausedRef.current = false;
     busyRef.current = false;
+    healthRef.current = stopCameraHealth(healthRef.current);
+    setHealth(healthRef.current);
     setStatus('Camera stopped. Results remain on screen.');
   }
 
@@ -225,6 +239,9 @@ export function LiveCounter() {
       setStatus(`Camera connected at ${width} x ${height}. Display enhancement is ${preset === 'standard' ? 'standard' : preset === 'low-light' ? 'low-light' : 'backlit'}; counting uses the original camera frames.`);
 
       trackerRef.current = createTracker();
+      lastProcessedVideoTimeRef.current = Number.NaN;
+      healthRef.current = startCameraHealth(healthRef.current);
+      setHealth(healthRef.current);
       runningRef.current = true;
       pausedRef.current = false;
       setPaused(false);
@@ -248,6 +265,13 @@ export function LiveCounter() {
       }
 
       runningRef.current = false;
+      healthRef.current = {
+        ...healthRef.current,
+        status: 'disconnected',
+        error: e instanceof Error ? e.message : 'Could not start the camera.',
+        updatedAt: Date.now()
+      };
+      setHealth(healthRef.current);
       setActive(false);
       setError(true);
       setStatus(e instanceof Error ? e.message : 'Could not start the live counter.');
@@ -263,9 +287,27 @@ export function LiveCounter() {
       return;
     }
 
+    // Do not run inference repeatedly on the same decoded video frame.
+    if (video.currentTime === lastProcessedVideoTimeRef.current) {
+      frameRef.current = requestAnimationFrame(processFrame);
+      return;
+    }
+    lastProcessedVideoTimeRef.current = video.currentTime;
+    healthRef.current = recordCameraFrame(healthRef.current, {
+      now: Date.now(),
+      videoTime: video.currentTime,
+      readyState: video.readyState,
+      trackState: streamRef.current?.getVideoTracks()[0]?.readyState ?? 'ended'
+    });
+
     busyRef.current = true;
+    const inferenceStartedAt = performance.now();
     try {
       const raw = await (await getDetector()).detect(video);
+      healthRef.current = recordCameraInference(healthRef.current, {
+        now: Date.now(),
+        durationMs: performance.now() - inferenceStartedAt
+      });
       if (!runningRef.current) return;
 
       const mode = modeRef.current;
@@ -313,6 +355,12 @@ export function LiveCounter() {
       latestDetectionsRef.current = found;
       drawFrame(found);
     } catch (e) {
+      healthRef.current = recordCameraInference(healthRef.current, {
+        now: Date.now(),
+        durationMs: performance.now() - inferenceStartedAt,
+        error: e instanceof Error ? e.message : 'Unknown inference error'
+      });
+      setHealth(healthRef.current);
       runningRef.current = false;
       setError(true);
       setStatus(e instanceof Error ? `Live detection stopped: ${e.message}` : 'Live detection failed.');
@@ -329,8 +377,39 @@ export function LiveCounter() {
     const next = !pausedRef.current;
     pausedRef.current = next;
     setPaused(next);
+    if (next) {
+      healthRef.current = { ...healthRef.current, status: 'paused', updatedAt: Date.now() };
+    } else {
+      healthRef.current = evaluateCameraHealth(healthRef.current, {
+        now: Date.now(),
+        trackState: streamRef.current?.getVideoTracks()[0]?.readyState ?? 'ended',
+        paused: false
+      });
+    }
+    setHealth(healthRef.current);
     setStatus(next ? 'Counting paused.' : 'Live detection resumed.');
   }
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => {
+      const trackState = streamRef.current?.getVideoTracks()[0]?.readyState ?? 'ended';
+      healthRef.current = evaluateCameraHealth(healthRef.current, {
+        now: Date.now(),
+        trackState,
+        paused: pausedRef.current
+      });
+      setHealth(healthRef.current);
+      if (healthRef.current.status === 'disconnected') {
+        runningRef.current = false;
+        cancelAnimationFrame(frameRef.current);
+        setActive(false);
+        setError(true);
+        setStatus('Camera disconnected. Stop the session and reconnect the camera before resuming.');
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [active]);
 
   function resetCounts() {
     countsRef.current = {};
@@ -490,6 +569,29 @@ export function LiveCounter() {
             <span>Start the camera to see live detections here.</span>
           </div>
         )}
+      </div>
+
+      <div style={{ marginTop: 14, padding: 14, border: '1px solid #293c43', borderRadius: 12, background: '#0b1519' }} aria-live="polite">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          <strong>Camera health</strong>
+          <span style={{
+            borderRadius: 20,
+            padding: '5px 10px',
+            fontSize: 12,
+            fontWeight: 700,
+            textTransform: 'capitalize',
+            color: health.status === 'healthy' ? '#42cdb1' : health.status === 'degraded' || health.status === 'detection-error' || health.status === 'disconnected' ? '#ffb4a2' : '#d7e3e0',
+            background: health.status === 'healthy' ? '#12352f' : health.status === 'degraded' || health.status === 'detection-error' || health.status === 'disconnected' ? '#40231f' : '#202e33'
+          }}>{health.status.replace('-', ' ')}</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: 10 }}>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Decoded FPS</div><strong>{getCameraHealthMetrics(health).fps.toFixed(1)}</strong></div>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>AI inference</div><strong>{health.inferenceMs === null ? '—' : `${Math.round(health.inferenceMs)} ms`}</strong></div>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Last frame age</div><strong>{health.lastFrameAt === null ? '—' : `${getCameraHealthMetrics(health).frameAgeMs} ms`}</strong></div>
+        </div>
+        <p style={{ margin: '10px 0 0', fontSize: 12, opacity: 0.75 }}>
+          Browser-camera telemetry only; a quiet scene is not considered a camera failure. {health.error ? `Issue: ${health.error}` : 'Health is based on decoded frames, stream state and local inference latency.'}
+        </p>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
