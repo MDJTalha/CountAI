@@ -165,16 +165,23 @@ export function LiveCounter() {
     }
   }
 
-  function stopCamera() {
-    cameraRequestIdRef.current += 1;
+  function releaseCameraResources() {
     runningRef.current = false;
     cancelAnimationFrame(frameRef.current);
-    streamRef.current?.getTracks().forEach(track => track.stop());
+    const stream = streamRef.current;
     streamRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
-    setActive(false);
-    setPaused(false);
+    stream?.getTracks().forEach(track => track.stop());
+    if (videoRef.current && videoRef.current.srcObject === stream) {
+      videoRef.current.srcObject = null;
+    }
     pausedRef.current = false;
+    setPaused(false);
+    setActive(false);
+  }
+
+  function stopCamera() {
+    cameraRequestIdRef.current += 1;
+    releaseCameraResources();
     busyRef.current = false;
     healthRef.current = stopCameraHealth(healthRef.current);
     setHealth(healthRef.current);
@@ -379,7 +386,7 @@ export function LiveCounter() {
         error: e instanceof Error ? e.message : 'Unknown inference error'
       });
       setHealth(healthRef.current);
-      runningRef.current = false;
+      releaseCameraResources();
       setError(true);
       setStatus(e instanceof Error ? `Live detection stopped: ${e.message}` : 'Live detection failed.');
     } finally {
@@ -419,11 +426,10 @@ export function LiveCounter() {
       });
       setHealth(healthRef.current);
       if (healthRef.current.status === 'disconnected') {
-        runningRef.current = false;
-        cancelAnimationFrame(frameRef.current);
-        setActive(false);
+        // Release the failed stream immediately; recovery must start with a fresh track.
+        releaseCameraResources();
         setError(true);
-        setStatus('Camera disconnected. Stop the session and reconnect the camera before resuming.');
+        setStatus('Camera disconnected. Reconnect the camera, then start a new session.');
       }
     }, 1000);
     return () => window.clearInterval(timer);
