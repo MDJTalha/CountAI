@@ -1,0 +1,51 @@
+name: CountAI CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: countai-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Regression tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run all regression suites available on this branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in test:engine test:camera-health test:camera-health-history test:server; do
+            if node -e "process.exit(require('./package.json').scripts?.['${script}'] ? 0 : 1)"; then
+              echo "::group::npm run ${script}"
+              npm run "${script}"
+              echo "::endgroup::"
+            else
+              echo "Skipping ${script}: script is not defined on this branch."
+            fi
+          done
+
+      - name: Build production application
+        run: npm run build
+
+      - name: Verify PWA service worker was generated
+        run: test -f dist/sw.js
