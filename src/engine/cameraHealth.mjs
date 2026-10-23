@@ -129,6 +129,7 @@ export function getCameraHealthMetrics(state, now = Date.now()) {
     inferenceMs: state.inferenceMs,
     lastFrameAt: state.lastFrameAt,
     frameAgeMs: state.lastFrameAt === null ? null : Math.max(0, now - state.lastFrameAt),
+    sessionDurationMs: state.startedAt === null ? null : Math.max(0, now - state.startedAt),
     status: state.status,
     error: state.error
   };
