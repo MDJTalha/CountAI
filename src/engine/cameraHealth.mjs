@@ -8,6 +8,7 @@ export function createCameraHealthState(now = Date.now()) {
   return {
     status: 'idle',
     startedAt: null,
+    stoppedAt: null,
     lastFrameAt: null,
     lastVideoTime: null,
     lastInferenceAt: null,
@@ -114,7 +115,7 @@ export function evaluateCameraHealth(state, {
 }
 
 export function stopCameraHealth(state, now = Date.now()) {
-  return { ...state, status: 'stopped', error: null, updatedAt: now };
+  return { ...state, status: 'stopped', stoppedAt: state.startedAt === null ? null : now, error: null, updatedAt: now };
 }
 
 export function getCameraHealthMetrics(state, now = Date.now()) {
@@ -129,7 +130,7 @@ export function getCameraHealthMetrics(state, now = Date.now()) {
     inferenceMs: state.inferenceMs,
     lastFrameAt: state.lastFrameAt,
     frameAgeMs: state.lastFrameAt === null ? null : Math.max(0, now - state.lastFrameAt),
-    sessionDurationMs: state.startedAt === null ? null : Math.max(0, now - state.startedAt),
+    sessionDurationMs: state.startedAt === null ? null : Math.max(0, (state.stoppedAt ?? now) - state.startedAt),
     status: state.status,
     error: state.error
   };
