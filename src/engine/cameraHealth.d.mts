@@ -17,4 +17,4 @@ export function recordCameraFrame(state: CameraHealthState, options?: { now?: nu
 export function recordCameraInference(state: CameraHealthState, options?: { now?: number; durationMs?: number; error?: string | null }): CameraHealthState;
 export function evaluateCameraHealth(state: CameraHealthState, options?: { now?: number; trackState?: 'live' | 'ended'; paused?: boolean }): CameraHealthState;
 export function stopCameraHealth(state: CameraHealthState, now?: number): CameraHealthState;
-export function getCameraHealthMetrics(state: CameraHealthState, now?: number): { fps: number; inferenceMs: number | null; lastFrameAt: number | null; frameAgeMs: number | null; status: CameraHealthStatus; error: string | null };
+export function getCameraHealthMetrics(state: CameraHealthState, now?: number): { fps: number; inferenceMs: number | null; lastFrameAt: number | null; frameAgeMs: number | null; sessionDurationMs: number | null; status: CameraHealthStatus; error: string | null };
