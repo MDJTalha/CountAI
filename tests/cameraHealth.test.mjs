@@ -72,3 +72,11 @@ test('stopped camera stays stopped when evaluated', () => {
   state = evaluateCameraHealth(state, { now: 1000, trackState: 'ended' });
   assert.equal(state.status, 'stopped');
 });
+
+test('session duration is measured from camera start and remains null before start', () => {
+  const idle = createCameraHealthState(0);
+  assert.equal(getCameraHealthMetrics(idle, 500).sessionDurationMs, null);
+  const started = startCameraHealth(idle, 100);
+  assert.equal(getCameraHealthMetrics(started, 1600).sessionDurationMs, 1500);
+  assert.equal(getCameraHealthMetrics(started, 50).sessionDurationMs, 0);
+});
