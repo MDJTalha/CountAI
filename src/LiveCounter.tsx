@@ -217,6 +217,7 @@ export function LiveCounter() {
   async function startCamera(requestedResolution: '720p' | '1080p' | '4k' = resolution) {
     const requestId = ++cameraRequestIdRef.current;
     let acquiredStream: MediaStream | null = null;
+    let startupStage: 'model' | 'camera' | 'playback' = 'model';
     setError(false);
 
     try {
@@ -229,6 +230,7 @@ export function LiveCounter() {
       await detector.load();
       if (requestId !== cameraRequestIdRef.current) return;
 
+      startupStage = 'camera';
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
@@ -253,6 +255,7 @@ export function LiveCounter() {
 
       streamRef.current = stream;
       video.srcObject = stream;
+      startupStage = 'playback';
       await video.play();
 
       if (requestId !== cameraRequestIdRef.current) {
@@ -300,7 +303,7 @@ export function LiveCounter() {
       runningRef.current = false;
       healthRef.current = {
         ...healthRef.current,
-        status: 'disconnected',
+        status: startupStage === 'model' ? 'detection-error' : 'disconnected',
         error: e instanceof Error ? e.message : 'Could not start the camera.',
         updatedAt: Date.now()
       };
