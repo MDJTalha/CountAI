@@ -1,0 +1,45 @@
+name: CountAI CI
+
+on:
+  push:
+    branches:
+      - main
+      - fix/pwa-detector-caching
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: countai-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Engine tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run engine regression tests
+        run: npm run test:engine
+
+      - name: Build production application
+        run: npm run build
+
+      - name: Verify PWA service worker was generated
+        run: test -f dist/sw.js
