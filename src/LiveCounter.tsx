@@ -72,6 +72,7 @@ export function LiveCounter() {
   const lastProcessedVideoTimeRef = useRef(Number.NaN);
   const healthRef = useRef(createCameraHealthState());
   const [health, setHealth] = useState(() => createCameraHealthState());
+  const [healthClock, setHealthClock] = useState(() => Date.now());
   const [healthHistory, setHealthHistory] = useState<CameraHealthEvent[]>(readSavedCameraHealthHistory);
   const healthHistoryRef = useRef(healthHistory);
   const lastHealthEventKeyRef = useRef('idle|');
@@ -86,10 +87,18 @@ export function LiveCounter() {
   const [actualResolution, setActualResolution] = useState('Camera not connected');
   const [total, setTotal] = useState(0);
   const [visiblePeople, setVisiblePeople] = useState(0);
+  const [rawDetectionCount, setRawDetectionCount] = useState(0);
+  const [acceptedDetectionCount, setAcceptedDetectionCount] = useState(0);
+  const [trackedObjectCount, setTrackedObjectCount] = useState(0);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [directions, setDirections] = useState({ 'A-to-B': 0, 'B-to-A': 0 });
   const [status, setStatus] = useState('Start your camera to begin live counting.');
   const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setHealthClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     enhancementRef.current = enhancement;
@@ -341,6 +350,7 @@ export function LiveCounter() {
     try {
       const raw = await (await getDetector()).detect(video);
       if (!runningRef.current) return;
+      setRawDetectionCount(raw.length);
       healthRef.current = recordCameraInference(healthRef.current, {
         now: Date.now(),
         durationMs: performance.now() - inferenceStartedAt
@@ -352,9 +362,11 @@ export function LiveCounter() {
         (d.confidence ?? 0) >= confidenceThreshold &&
         (mode === 'all' || d.category.toLowerCase() === 'person')
       );
+      setAcceptedDetectionCount(found.length);
 
       const tracker = updateTracks(trackerRef.current, found);
       trackerRef.current = tracker;
+      setTrackedObjectCount(tracker.tracks.length);
 
       const line: [[number, number], [number, number]] = [
         [0, video.videoHeight * linePosition / 100],
@@ -484,6 +496,9 @@ export function LiveCounter() {
     setDirections({ 'A-to-B': 0, 'B-to-A': 0 });
     setTotal(0);
     setVisiblePeople(0);
+    setRawDetectionCount(0);
+    setAcceptedDetectionCount(0);
+    setTrackedObjectCount(0);
     latestDetectionsRef.current = [];
     drawFrame([]);
     setStatus('Counts reset. Tracking has restarted.');
@@ -650,13 +665,19 @@ export function LiveCounter() {
           }}>{health.status.replace('-', ' ')}</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: 10 }}>
-          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Processed FPS</div><strong>{getCameraHealthMetrics(health).fps.toFixed(1)}</strong></div>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Processed FPS</div><strong>{getCameraHealthMetrics(health, healthClock).fps.toFixed(1)}</strong></div>
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>AI inference</div><strong>{health.inferenceMs === null ? '—' : `${Math.round(health.inferenceMs)} ms`}</strong></div>
-          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Last frame age</div><strong>{health.lastFrameAt === null ? '—' : `${getCameraHealthMetrics(health).frameAgeMs} ms`}</strong></div>
-          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Session elapsed</div><strong>{formatElapsedDuration(getCameraHealthMetrics(health).sessionDurationMs)}</strong></div>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Last frame age</div><strong>{health.lastFrameAt === null ? '—' : `${getCameraHealthMetrics(health, healthClock).frameAgeMs} ms`}</strong></div>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Session elapsed</div><strong>{formatElapsedDuration(getCameraHealthMetrics(health, healthClock).sessionDurationMs)}</strong></div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: 10, marginTop: 12 }}>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Raw AI detections</div><strong>{rawDetectionCount}</strong></div>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Accepted detections</div><strong>{acceptedDetectionCount}</strong></div>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Active tracks</div><strong>{trackedObjectCount}</strong></div>
         </div>
         <p style={{ margin: '10px 0 0', fontSize: 12, opacity: 0.75 }}>
           Browser-camera telemetry only; a quiet scene is not considered a camera failure. {health.error ? `Issue: ${health.error}` : 'Health is based on video-frame freshness, stream state and local inference latency.'}
+          {detectionMode === 'people' && acceptedDetectionCount === 0 ? ' No person detections currently pass the confidence filter; try better lighting/framing or temporarily select All supported classes to diagnose model output.' : ''}
         </p>
         <div style={{ borderTop: '1px solid #293c43', marginTop: 12, paddingTop: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
