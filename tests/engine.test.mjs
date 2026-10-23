@@ -98,3 +98,46 @@ test('event counter suppresses rapid recrossing during cooldown', () => {
   // The same valid reverse crossing is allowed after cooldown.
   assert.equal(countCrossingEvents(state, line, 2300, 5, 1200).length, 1);
 });
+
+test('tracker expires tracks that have not been seen within max age', () => {
+  let state = createTracker();
+  const detections = [{ id: 'first', category: 'person', bbox: [10, 10, 20, 20], source: 'local' }];
+  state = updateTracks(state, detections, 1000, 500);
+  assert.equal(state.tracks.length, 1);
+
+  state = updateTracks(state, [], 1501, 500);
+  assert.equal(state.tracks.length, 0);
+});
+
+test('tracker does not assign one existing track to two detections in the same frame', () => {
+  let state = createTracker();
+  const initial = [{ id: 'seed', category: 'person', bbox: [10, 10, 20, 20], source: 'local' }];
+  state = updateTracks(state, initial, 1000);
+
+  const nextFrame = [
+    { id: 'left', category: 'person', bbox: [10, 10, 20, 20], source: 'local' },
+    { id: 'right', category: 'person', bbox: [10, 10, 20, 20], source: 'local' }
+  ];
+  state = updateTracks(state, nextFrame, 1100);
+
+  assert.notEqual(nextFrame[0].trackId, nextFrame[1].trackId);
+  assert.equal(new Set(nextFrame.map(d => d.trackId)).size, 2);
+});
+
+test('tracker does not match detections across different categories', () => {
+  let state = createTracker();
+  const initial = [{ id: 'person-1', category: 'person', bbox: [10, 10, 20, 20], source: 'local' }];
+  state = updateTracks(state, initial, 1000);
+
+  const nextFrame = [{ id: 'car-1', category: 'car', bbox: [10, 10, 20, 20], source: 'local' }];
+  state = updateTracks(state, nextFrame, 1100);
+
+  assert.notEqual(nextFrame[0].trackId, initial[0].trackId);
+  assert.equal(state.tracks.length, 2);
+});
+
+test('IoU safely returns zero for zero-area boxes', () => {
+  assert.equal(intersectionOverUnion([0, 0, 0, 10], [0, 0, 10, 10]), 0);
+  assert.equal(intersectionOverUnion([0, 0, 10, 10], [0, 0, 0, 0]), 0);
+});
+
