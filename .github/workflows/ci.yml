@@ -43,6 +43,9 @@ jobs:
       - name: Run camera health state tests
         run: npm run test:camera-health
 
+      - name: Run camera health history tests
+        run: npm run test:camera-health-history
+
       - name: Build production application
         run: npm run build
 
