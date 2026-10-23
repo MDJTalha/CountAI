@@ -2,6 +2,7 @@ export type CameraHealthStatus = 'idle' | 'starting' | 'healthy' | 'degraded' | 
 export interface CameraHealthState {
   status: CameraHealthStatus;
   startedAt: number | null;
+  stoppedAt: number | null;
   lastFrameAt: number | null;
   lastVideoTime: number | null;
   lastInferenceAt: number | null;
