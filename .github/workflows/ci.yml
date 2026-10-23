@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   test-and-build:
-    name: Engine tests and production build
+    name: Engine tests, server smoke tests and production build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -40,6 +40,9 @@ jobs:
 
       - name: Build production application
         run: npm run build
+
+      - name: Run API server smoke tests
+        run: npm run test:server
 
       - name: Verify PWA service worker was generated
         run: test -f dist/sw.js
