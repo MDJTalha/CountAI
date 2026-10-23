@@ -10,7 +10,7 @@
     "test:engine": "node --test tests/engine.test.mjs",
     "server": "node server/index.mjs",
     "test:server": "node --test tests/server.test.mjs",
-    "test": "npm run test:engine && npm run test:server"
+    "test": "npm run test:engine && npm run build && npm run test:server"
   },
   "dependencies": {
     "@tensorflow-models/coco-ssd": "^2.2.3",
