@@ -30,6 +30,9 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Build production application
+        run: npm run build
+
       - name: Run all regression suites available on this branch
         shell: bash
         run: |
@@ -43,9 +46,6 @@ jobs:
               echo "Skipping ${script}: script is not defined on this branch."
             fi
           done
-
-      - name: Build production application
-        run: npm run build
 
       - name: Verify PWA service worker was generated
         run: test -f dist/sw.js
