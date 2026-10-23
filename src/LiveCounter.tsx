@@ -44,6 +44,15 @@ function readSavedCameraHealthHistory(): CameraHealthEvent[] {
   }
 }
 
+function formatElapsedDuration(durationMs: number | null): string {
+  if (durationMs === null) return '—';
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m ${seconds}s`;
+}
+
 export function LiveCounter() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -641,6 +650,7 @@ export function LiveCounter() {
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>Processed FPS</div><strong>{getCameraHealthMetrics(health).fps.toFixed(1)}</strong></div>
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>AI inference</div><strong>{health.inferenceMs === null ? '—' : `${Math.round(health.inferenceMs)} ms`}</strong></div>
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>Last frame age</div><strong>{health.lastFrameAt === null ? '—' : `${getCameraHealthMetrics(health).frameAgeMs} ms`}</strong></div>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Session elapsed</div><strong>{formatElapsedDuration(getCameraHealthMetrics(health).sessionDurationMs)}</strong></div>
         </div>
         <p style={{ margin: '10px 0 0', fontSize: 12, opacity: 0.75 }}>
           Browser-camera telemetry only; a quiet scene is not considered a camera failure. {health.error ? `Issue: ${health.error}` : 'Health is based on video-frame freshness, stream state and local inference latency.'}
