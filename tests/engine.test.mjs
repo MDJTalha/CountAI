@@ -38,7 +38,8 @@ test('event counter records repeated crossings and their directions', () => {
     bbox: [40, 40, 20, 20],
     previousCenter: [50, 20],
     lastSeen: 1000,
-    counted: false
+    counted: false,
+    lastStableSide: -1
   }];
 
   const line = [[0, 30], [100, 30]];
@@ -54,6 +55,32 @@ test('event counter records repeated crossings and their directions', () => {
   assert.deepEqual(second.map(e => [e.category, e.direction]), [
     ['person', 'B-to-A']
   ]);
+});
+
+test('event counter detects gradual crossings through the deadband', () => {
+  const state = createTracker();
+  state.tracks = [{
+    id: 8,
+    category: 'person',
+    bbox: [40, 10, 20, 20],
+    previousCenter: [50, 20],
+    lastSeen: 1000,
+    counted: false
+  }];
+  const line = [[0, 30], [100, 30]];
+
+  // Establish the initial side above the line.
+  assert.deepEqual(countCrossingEvents(state, line, 1000, 5, 1200), []);
+  // Normal movement crosses through the deadband over multiple frames.
+  state.tracks[0].bbox = [40, 18, 20, 20]; // center y=28, inside deadband
+  assert.deepEqual(countCrossingEvents(state, line, 1100, 5, 1200), []);
+  state.tracks[0].bbox = [40, 24, 20, 20]; // center y=34, still inside deadband
+  assert.deepEqual(countCrossingEvents(state, line, 1200, 5, 1200), []);
+  state.tracks[0].bbox = [40, 30, 20, 20]; // center y=40, clearly below
+  assert.deepEqual(
+    countCrossingEvents(state, line, 1300, 5, 1200).map(e => e.direction),
+    ['A-to-B']
+  );
 });
 
 test('event counter suppresses a crossing that stays inside the deadband', () => {
@@ -82,7 +109,8 @@ test('event counter suppresses rapid recrossing during cooldown', () => {
     bbox: [40, 40, 20, 20],
     previousCenter: [50, 20],
     lastSeen: 1000,
-    counted: false
+    counted: false,
+    lastStableSide: -1
   }];
 
   const line = [[0, 30], [100, 30]];
@@ -95,7 +123,11 @@ test('event counter suppresses rapid recrossing during cooldown', () => {
   state.tracks[0].bbox = [40, 0, 20, 20];
   assert.deepEqual(countCrossingEvents(state, line, 1500, 5, 1200), []);
 
-  // The same valid reverse crossing is allowed after cooldown.
+  // Cross back during cooldown; the stable side updates without counting.
+  state.tracks[0].bbox = [40, 40, 20, 20];
+  assert.equal(countCrossingEvents(state, line, 1800, 5, 1200).length, 0);
+  // Cross in reverse again after cooldown and count the new transition.
+  state.tracks[0].bbox = [40, 0, 20, 20];
   assert.equal(countCrossingEvents(state, line, 2300, 5, 1200).length, 1);
 });
 
