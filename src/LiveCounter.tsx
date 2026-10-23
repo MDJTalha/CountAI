@@ -12,6 +12,12 @@ import {
   stopCameraHealth,
   getCameraHealthMetrics
 } from './engine/cameraHealth.mjs';
+import {
+  appendCameraHealthEvent,
+  loadCameraHealthHistory,
+  saveCameraHealthHistory
+} from './engine/cameraHealthHistory.mjs';
+import type { CameraHealthEvent } from './engine/cameraHealthHistory.mjs';
 
 type TrackerState = ReturnType<typeof createTracker>;
 
@@ -28,6 +34,14 @@ function getDetector() {
       });
   }
   return detectorPromise;
+}
+
+function readSavedCameraHealthHistory(): CameraHealthEvent[] {
+  try {
+    return typeof window === 'undefined' ? [] : loadCameraHealthHistory(window.localStorage);
+  } catch {
+    return [];
+  }
 }
 
 export function LiveCounter() {
@@ -49,6 +63,9 @@ export function LiveCounter() {
   const lastProcessedVideoTimeRef = useRef(Number.NaN);
   const healthRef = useRef(createCameraHealthState());
   const [health, setHealth] = useState(() => createCameraHealthState());
+  const [healthHistory, setHealthHistory] = useState<CameraHealthEvent[]>(readSavedCameraHealthHistory);
+  const healthHistoryRef = useRef(healthHistory);
+  const lastHealthEventKeyRef = useRef('idle|');
 
   const [active, setActive] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -412,6 +429,35 @@ export function LiveCounter() {
     return () => window.clearInterval(timer);
   }, [active]);
 
+  useEffect(() => {
+    const eventKey = `${health.status}|${health.error ?? ''}`;
+    if (eventKey === lastHealthEventKeyRef.current) return;
+    lastHealthEventKeyRef.current = eventKey;
+    const next = appendCameraHealthEvent(healthHistoryRef.current, {
+      timestamp: Date.now(),
+      status: health.status,
+      error: health.error
+    });
+    if (next === healthHistoryRef.current) return;
+    healthHistoryRef.current = next;
+    setHealthHistory(next);
+    try {
+      saveCameraHealthHistory(window.localStorage, next);
+    } catch {
+      // Health monitoring must continue if browser storage is blocked.
+    }
+  }, [health.status, health.error]);
+
+  function clearHealthHistory() {
+    healthHistoryRef.current = [];
+    setHealthHistory([]);
+    try {
+      saveCameraHealthHistory(window.localStorage, []);
+    } catch {
+      // The visible in-memory history is still cleared.
+    }
+  }
+
   function resetCounts() {
     countsRef.current = {};
     directionsRef.current = { 'A-to-B': 0, 'B-to-A': 0 };
@@ -591,8 +637,27 @@ export function LiveCounter() {
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>Last frame age</div><strong>{health.lastFrameAt === null ? '—' : `${getCameraHealthMetrics(health).frameAgeMs} ms`}</strong></div>
         </div>
         <p style={{ margin: '10px 0 0', fontSize: 12, opacity: 0.75 }}>
-          Browser-camera telemetry only; a quiet scene is not considered a camera failure. {health.error ? `Issue: ${health.error}` : 'Health is based on decoded frames, stream state and local inference latency.'}
+          Browser-camera telemetry only; a quiet scene is not considered a camera failure. {health.error ? `Issue: ${health.error}` : 'Health is based on video-frame freshness, stream state and local inference latency.'}
         </p>
+        <div style={{ borderTop: '1px solid #293c43', marginTop: 12, paddingTop: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <strong style={{ fontSize: 13 }}>Recent health events</strong>
+            <button className="outline-button" onClick={clearHealthHistory} style={{ padding: '5px 8px', fontSize: 12 }}>Clear history</button>
+          </div>
+          {healthHistory.length === 0
+            ? <span style={{ opacity: 0.65, fontSize: 12 }}>No health transitions recorded yet.</span>
+            : <div style={{ display: 'grid', gap: 6 }}>
+                {healthHistory.slice(-4).reverse().map(event => (
+                  <div key={`${event.timestamp}-${event.status}`} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, alignItems: 'baseline' }}>
+                    <span style={{ opacity: 0.65, fontVariantNumeric: 'tabular-nums' }}>{new Date(event.timestamp).toLocaleTimeString()}</span>
+                    <strong style={{ textTransform: 'capitalize' }}>{event.status.replace('-', ' ')}</strong>
+                    {event.error && <span style={{ opacity: 0.8 }}>{event.error}</span>}
+                  </div>
+                ))}
+              </div>
+          }
+          <div style={{ opacity: 0.55, fontSize: 11, marginTop: 7 }}>Up to 12 status transitions are stored in this browser; no video is stored.</div>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
