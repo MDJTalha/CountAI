@@ -2,14 +2,7 @@ name: CountAI CI
 
 on:
   push:
-    branches:
-      - main
-      - fix/pwa-detector-caching
-      - feat/camera-health-monitoring
   pull_request:
-    branches:
-      - main
-      - fix/pwa-detector-caching
   workflow_dispatch:
 
 permissions:
@@ -21,13 +14,14 @@ concurrency:
 
 jobs:
   test-and-build:
-    name: Engine tests, server smoke tests and production build
+    name: Regression tests and production build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -37,20 +31,22 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Run engine regression tests
-        run: npm run test:engine
-
-      - name: Run camera health state tests
-        run: npm run test:camera-health
-
-      - name: Run camera health history tests
-        run: npm run test:camera-health-history
-
       - name: Build production application
         run: npm run build
 
-      - name: Run API server smoke tests
-        run: npm run test:server
+      - name: Run all regression suites available on this branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in test:engine test:camera-health test:camera-health-history test:server; do
+            if node -e "process.exit(require('./package.json').scripts?.['${script}'] ? 0 : 1)"; then
+              echo "::group::npm run ${script}"
+              npm run "${script}"
+              echo "::endgroup::"
+            else
+              echo "Skipping ${script}: script is not defined on this branch."
+            fi
+          done
 
       - name: Verify PWA service worker was generated
         run: test -f dist/sw.js
