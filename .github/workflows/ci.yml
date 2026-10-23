@@ -39,7 +39,9 @@ jobs:
 
       - name: Run engine regression tests
         run: npm run test:engine
-\n      - name: Run camera health state tests
+
+
+      - name: Run camera health state tests
         run: npm run test:camera-health
 
       - name: Build production application
