@@ -304,11 +304,11 @@ export function LiveCounter() {
     const inferenceStartedAt = performance.now();
     try {
       const raw = await (await getDetector()).detect(video);
+      if (!runningRef.current) return;
       healthRef.current = recordCameraInference(healthRef.current, {
         now: Date.now(),
         durationMs: performance.now() - inferenceStartedAt
       });
-      if (!runningRef.current) return;
 
       const mode = modeRef.current;
       const confidenceThreshold = mode === 'people' ? 0.45 : 0.60;
@@ -355,6 +355,7 @@ export function LiveCounter() {
       latestDetectionsRef.current = found;
       drawFrame(found);
     } catch (e) {
+      if (!runningRef.current) return;
       healthRef.current = recordCameraInference(healthRef.current, {
         now: Date.now(),
         durationMs: performance.now() - inferenceStartedAt,
@@ -585,7 +586,7 @@ export function LiveCounter() {
           }}>{health.status.replace('-', ' ')}</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: 10 }}>
-          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Decoded FPS</div><strong>{getCameraHealthMetrics(health).fps.toFixed(1)}</strong></div>
+          <div><div style={{ opacity: 0.7, fontSize: 12 }}>Processed FPS</div><strong>{getCameraHealthMetrics(health).fps.toFixed(1)}</strong></div>
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>AI inference</div><strong>{health.inferenceMs === null ? '—' : `${Math.round(health.inferenceMs)} ms`}</strong></div>
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>Last frame age</div><strong>{health.lastFrameAt === null ? '—' : `${getCameraHealthMetrics(health).frameAgeMs} ms`}</strong></div>
         </div>
