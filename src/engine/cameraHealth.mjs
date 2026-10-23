@@ -114,8 +114,17 @@ export function evaluateCameraHealth(state, {
   return { ...state, status: 'healthy', error: null, updatedAt: now };
 }
 
-export function stopCameraHealth(state, now = Date.now()) {
-  return { ...state, status: 'stopped', stoppedAt: state.startedAt === null ? null : now, error: null, updatedAt: now };
+export function stopCameraHealth(state, now = Date.now(), {
+  status = 'stopped',
+  error = null
+} = {}) {
+  return {
+    ...state,
+    status,
+    stoppedAt: state.startedAt === null ? null : now,
+    error,
+    updatedAt: now
+  };
 }
 
 export function getCameraHealthMetrics(state, now = Date.now()) {
