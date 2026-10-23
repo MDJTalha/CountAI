@@ -404,10 +404,15 @@ export function LiveCounter() {
       drawFrame(found);
     } catch (e) {
       if (!runningRef.current) return;
-      healthRef.current = recordCameraInference(healthRef.current, {
+      const failure = recordCameraInference(healthRef.current, {
         now: Date.now(),
         durationMs: performance.now() - inferenceStartedAt,
         error: e instanceof Error ? e.message : 'Unknown inference error'
+      });
+      // Freeze elapsed session time while retaining the distinct inference-error state.
+      healthRef.current = stopCameraHealth(failure, Date.now(), {
+        status: 'detection-error',
+        error: failure.error ?? 'Unknown inference error'
       });
       setHealth(healthRef.current);
       releaseCameraResources();
@@ -443,17 +448,33 @@ export function LiveCounter() {
     if (!active) return;
     const timer = window.setInterval(() => {
       const trackState = streamRef.current?.getVideoTracks()[0]?.readyState ?? 'ended';
+      const now = Date.now();
       healthRef.current = evaluateCameraHealth(healthRef.current, {
-        now: Date.now(),
+        now,
         trackState,
         paused: pausedRef.current
       });
-      setHealth(healthRef.current);
-      if (healthRef.current.status === 'disconnected') {
-        // Release the failed stream immediately; recovery must start with a fresh track.
+      const healthError = healthRef.current.error ?? '';
+      const stalled = healthRef.current.status === 'degraded' &&
+        /video frames have stalled|no video frames received yet/i.test(healthError);
+
+      if (healthRef.current.status === 'disconnected' || stalled) {
+        // A live track can still have a frozen video clock. Release it after the
+        // watchdog confirms stale frames; slow inference alone must not stop the camera.
+        const reason = healthError || 'Camera track ended';
         releaseCameraResources();
+        busyRef.current = false;
+        healthRef.current = stopCameraHealth(healthRef.current, now, {
+          status: 'disconnected',
+          error: reason
+        });
+        setHealth(healthRef.current);
         setError(true);
-        setStatus('Camera disconnected. Reconnect the camera, then start a new session.');
+        setStatus(stalled
+          ? 'Video frames stopped updating. Camera resources were released. Check the camera, then start a new session.'
+          : 'Camera disconnected. Reconnect the camera, then start a new session.');
+      } else {
+        setHealth(healthRef.current);
       }
     }, 1000);
     return () => window.clearInterval(timer);
