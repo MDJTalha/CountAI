@@ -120,16 +120,26 @@ export function countCrossingEvents(
   const events = [];
 
   for (const track of state.tracks) {
-    if (!track.previousCenter || !track.bbox) continue;
+    if (!track.bbox) continue;
 
-    const before = signedDistanceFromLine(track.previousCenter, line);
-    const current = signedDistanceFromLine(center(track.bbox), line);
+    // Remember the last side the object clearly occupied. A frame-by-frame
+    // sign change misses normal slow crossings because intermediate frames
+    // fall inside the deadband. Stable-side transitions handle those frames.
+    const currentDistance = signedDistanceFromLine(center(track.bbox), line);
+    if (Math.abs(currentDistance) < deadbandPx) continue;
+    const currentSide = Math.sign(currentDistance);
 
-    if (Math.abs(before) < deadbandPx || Math.abs(current) < deadbandPx) continue;
-    if (Math.sign(before) === Math.sign(current)) continue;
+    if (track.lastStableSide === undefined || track.lastStableSide === 0) {
+      track.lastStableSide = currentSide;
+      continue;
+    }
+    if (track.lastStableSide === currentSide) continue;
+
+    const previousSide = track.lastStableSide;
+    track.lastStableSide = currentSide;
     if (now - (track.lastCrossingAt ?? -Infinity) < cooldownMs) continue;
 
-    const direction = before < current ? 'A-to-B' : 'B-to-A';
+    const direction = previousSide < currentSide ? 'A-to-B' : 'B-to-A';
     track.lastCrossingAt = now;
     track.crossingDirection = direction;
     track.counted = true;
