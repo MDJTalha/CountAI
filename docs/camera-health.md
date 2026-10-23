@@ -23,4 +23,5 @@ The Live Counter shows processed-frame rate, most recent local inference duratio
 - The UI watchdog checks stream state and frame freshness once per second.
 - Recovery is intentionally operator-controlled in this milestone. Automatic reconnect must be designed with backoff, stream cleanup, and count-session continuity tests before being enabled.
 - A healthy browser stream does not prove an NVR is recording. Recording assurance is a separate later milestone requiring recorder-side evidence.
-- Health state is currently in memory for the active page session; persistent incident history and uptime percentages are not yet implemented.
+- Up to 12 health-state transitions are persisted in browser local storage. Stored events contain timestamps, status labels, and bounded error text only; no video or detections are stored.
+- A formal uptime percentage is not yet reported. Session-duration accounting, server-side incident history, and SLA-grade uptime require a continuously running connector and are later work.
