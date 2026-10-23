@@ -1,0 +1,34 @@
+﻿node_modules/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Local recovery copies
+*.bak
+*.backup
+*.before-*
+
+# Alternate source archive retained locally
+/countai-stabilization-source/
+
+# Secrets and certificates
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Private surveillance data
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.pcap
+
+.DS_Store
+Thumbs.db
