@@ -74,7 +74,9 @@ export function recordCameraInference(state, { now = Date.now(), durationMs, err
     status: inferenceMs !== null && inferenceMs > CAMERA_HEALTH_THRESHOLDS.slowInferenceMs ? 'degraded' : state.status,
     lastInferenceAt: now,
     inferenceMs,
-    error: null,
+    error: inferenceMs !== null && inferenceMs > CAMERA_HEALTH_THRESHOLDS.slowInferenceMs
+      ? 'AI inference is slower than the 500 ms target'
+      : null,
     updatedAt: now
   };
 }
