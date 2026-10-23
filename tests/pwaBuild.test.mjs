@@ -39,5 +39,5 @@ test('detector runtime cache remains bounded and expires old entries', async () 
   assert.match(worker, /countai-detector-assets/);
   assert.match(worker, /CacheFirst/);
   assert.match(worker, /maxEntries\s*:\s*2/);
-  assert.match(worker, /maxAgeSeconds\s*:\s*2592000/);
+  assert.match(worker, /maxAgeSeconds\s*:\s*(?:2592000|2592e3)/);
 });
