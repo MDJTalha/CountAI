@@ -82,3 +82,33 @@ test('session duration freezes when the camera is stopped', () => {
   const stopped = stopCameraHealth(started, 1700);
   assert.equal(getCameraHealthMetrics(stopped, 9000).sessionDurationMs, 1600);
 });
+
+test('session duration freezes while a stalled camera is marked disconnected', () => {
+  const started = startCameraHealth(createCameraHealthState(0), 100);
+  const stalled = recordCameraFrame(started, { now: 200, videoTime: 1 });
+  const disconnected = stopCameraHealth(stalled, 3200, {
+    status: 'disconnected',
+    error: 'Video frames have stalled'
+  });
+
+  assert.equal(disconnected.status, 'disconnected');
+  assert.match(disconnected.error, /stalled/i);
+  assert.equal(getCameraHealthMetrics(disconnected, 9000).sessionDurationMs, 3100);
+});
+
+test('session duration freezes on inference failure while preserving the error', () => {
+  const started = startCameraHealth(createCameraHealthState(0), 100);
+  const failed = recordCameraInference(started, {
+    now: 700,
+    durationMs: 600,
+    error: 'model execution failed'
+  });
+  const stopped = stopCameraHealth(failed, 750, {
+    status: 'detection-error',
+    error: failed.error
+  });
+
+  assert.equal(stopped.status, 'detection-error');
+  assert.match(stopped.error, /model execution failed/);
+  assert.equal(getCameraHealthMetrics(stopped, 9000).sessionDurationMs, 650);
+});
