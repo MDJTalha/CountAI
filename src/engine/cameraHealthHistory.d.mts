@@ -1,4 +1,3 @@
-import type { CameraHealthStatus } from './cameraHealth.mjs';
 export interface CameraHealthEvent { timestamp: number; status: string; error: string | null; }
 export const CAMERA_HEALTH_HISTORY_KEY: string;
 export const CAMERA_HEALTH_HISTORY_LIMIT: number;
