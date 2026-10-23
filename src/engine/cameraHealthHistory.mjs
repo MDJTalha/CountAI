@@ -6,7 +6,7 @@ export function appendCameraHealthEvent(events, event, limit = CAMERA_HEALTH_HIS
     return Array.isArray(events) ? events : [];
   }
   const previous = events[events.length - 1];
-  const nextError = event.error == null ? null : String(event.error);
+  const nextError = event.error == null ? null : String(event.error).slice(0, 200);
   if (previous && previous.status === event.status && (previous.error ?? null) === nextError) return events;
   const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : CAMERA_HEALTH_HISTORY_LIMIT;
   return [...events, { timestamp: event.timestamp, status: event.status, error: nextError }].slice(-safeLimit);
