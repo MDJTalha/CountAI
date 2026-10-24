@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { isResourceId } from './contracts.mjs';
@@ -55,6 +55,7 @@ export function createSqliteIncidentStore(databasePath = process.env.SPAIS_EVENT
         db.exec("CREATE TABLE IF NOT EXISTS spais_incidents (sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, organization_id TEXT NOT NULL, site_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, severity TEXT NOT NULL CHECK (severity IN ('low','medium','high','critical')), source TEXT NOT NULL CHECK (source IN ('operator','camera_health','recording_coverage')), status TEXT NOT NULL CHECK (status IN ('open','acknowledged','investigating','resolved')), evidence_state TEXT NOT NULL CHECK (evidence_state IN ('not_applicable','reported_not_independently_verified')), created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, sop_version_id TEXT, resolved_at TEXT)");
         const incidentColumns = db.prepare('PRAGMA table_info(spais_incidents)').all();
         if (!incidentColumns.some(column => column.name === 'sop_version_id')) db.exec('ALTER TABLE spais_incidents ADD COLUMN sop_version_id TEXT');
+        db.exec(`CREATE TABLE IF NOT EXISTS spais_incident_idempotency (organization_id TEXT NOT NULL, site_id TEXT NOT NULL, key_hash TEXT NOT NULL, request_hash TEXT NOT NULL, incident_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (organization_id, site_id, key_hash), FOREIGN KEY (incident_id) REFERENCES spais_incidents(id))`);
         db.exec('CREATE INDEX IF NOT EXISTS idx_spais_incidents_scope ON spais_incidents (organization_id, site_id, sequence DESC)');
         db.exec('CREATE TABLE IF NOT EXISTS spais_audit_events (sequence INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, organization_id TEXT NOT NULL, site_id TEXT, actor_id TEXT NOT NULL, action TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, occurred_at TEXT NOT NULL, details_json TEXT NOT NULL)');
         db.exec('CREATE INDEX IF NOT EXISTS idx_spais_audit_org_sequence ON spais_audit_events (organization_id, sequence DESC)');
@@ -83,10 +84,23 @@ export function createSqliteIncidentStore(databasePath = process.env.SPAIS_EVENT
 
   return {
     configured: Boolean(path),
-    async create({ organizationId, actorId, input, now = new Date() }) {
+    async create({ organizationId, actorId, input, idempotencyKey, now = new Date() }) {
       const validation = validateIncidentInput(input);
       if (!validation.valid) throw Object.assign(fail('invalid_incident'), { validationErrors: validation.errors });
       if (!isResourceId(organizationId) || !isResourceId(actorId)) throw fail('invalid_trusted_scope');
+      if (idempotencyKey !== undefined && (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey))) {
+        throw fail('invalid_idempotency_key');
+      }
+      const normalizedInput = {
+        siteId: input.siteId,
+        title: input.title.trim(),
+        description: (input.description || '').trim(),
+        severity: input.severity || 'medium',
+        source: input.source || 'operator',
+        sopVersionId: input.sopVersionId || null
+      };
+      const requestHash = createHash('sha256').update(JSON.stringify(normalizedInput)).digest('hex');
+      const keyHash = idempotencyKey === undefined ? null : createHash('sha256').update(idempotencyKey).digest('hex');
       const db = await getDatabase();
       const timestamp = now.toISOString();
       const incident = {
@@ -99,12 +113,28 @@ export function createSqliteIncidentStore(databasePath = process.env.SPAIS_EVENT
       };
       db.exec('BEGIN IMMEDIATE;');
       try {
+        if (keyHash) {
+          const existingKey = db.prepare('SELECT request_hash, incident_id FROM spais_incident_idempotency WHERE organization_id = ? AND site_id = ? AND key_hash = ?')
+            .get(organizationId, incident.siteId, keyHash);
+          if (existingKey) {
+            if (existingKey.request_hash !== requestHash) throw fail('idempotency_key_reused_with_different_payload');
+            const existingIncident = db.prepare('SELECT * FROM spais_incidents WHERE organization_id = ? AND site_id = ? AND id = ?')
+              .get(organizationId, incident.siteId, existingKey.incident_id);
+            if (!existingIncident) throw fail('idempotency_record_corrupt');
+            db.exec('COMMIT;');
+            return { incident: toIncident(existingIncident), replayed: true };
+          }
+        }
         db.prepare('INSERT INTO spais_incidents (id, organization_id, site_id, title, description, severity, source, status, evidence_state, created_by, created_at, updated_at, sop_version_id, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)')
           .run(incident.id, organizationId, incident.siteId, incident.title, incident.description, incident.severity, incident.source, incident.status, incident.evidenceState, actorId, timestamp, timestamp, incident.sopVersionId);
-        audit(db, incident, actorId, 'incident.created', timestamp, { status: incident.status, severity: incident.severity, source: incident.source, evidenceState: incident.evidenceState, sopVersionId: incident.sopVersionId });
+        audit(db, incident, actorId, 'incident.created', timestamp, { status: incident.status, severity: incident.severity, source: incident.source, evidenceState: incident.evidenceState, sopVersionId: incident.sopVersionId, idempotencyProtected: Boolean(keyHash) });
+        if (keyHash) {
+          db.prepare('INSERT INTO spais_incident_idempotency (organization_id, site_id, key_hash, request_hash, incident_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+            .run(organizationId, incident.siteId, keyHash, requestHash, incident.id, timestamp);
+        }
         db.exec('COMMIT;');
       } catch (error) { try { db.exec('ROLLBACK;'); } catch {} throw error; }
-      return incident;
+      return { incident, replayed: false };
     },
     async get({ organizationId, siteId, incidentId }) {
       if (![organizationId, siteId, incidentId].every(isResourceId)) throw fail('invalid_incident_query');
