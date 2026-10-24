@@ -371,9 +371,10 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
         details: JSON.parse(row.details_json)
       }));
     },
-    async createConnectorEnrollmentChallenge({ organizationId, siteId, connectorId, actorId, now = new Date(), ttlSeconds = 600 }) {
+    async createConnectorEnrollmentChallenge({ organizationId, siteId, connectorId, actorId, publicKeyJwk, now = new Date(), ttlSeconds = 600 }) {
       if (!isResourceId(organizationId) || !isResourceId(siteId) ||
           !isResourceId(connectorId) || !isResourceId(actorId)) throw invalid('invalid_trusted_scope');
+      const normalizedKey = normalizeRsaPublicKey(publicKeyJwk);
       const database = await getDatabase();
       const enrollmentId = randomUUID();
       const challenge = randomBytes(32).toString('base64url');
@@ -400,21 +401,24 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
         }
         database.prepare(`
           INSERT INTO spais_connector_enrollments
-            (enrollment_id, organization_id, site_id, connector_id, challenge_hash, status, expires_at, created_by, created_at)
-          VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-        `).run(enrollmentId, organizationId, siteId, connectorId, challengeHash, expiresAt, actorId, createdAt);
+            (enrollment_id, organization_id, site_id, connector_id, challenge_hash, status, expires_at, created_by, created_at, public_key_jwk, key_thumbprint)
+          VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+        `).run(
+          enrollmentId, organizationId, siteId, connectorId, challengeHash, expiresAt, actorId, createdAt,
+          JSON.stringify(normalizedKey.publicKeyJwk), normalizedKey.keyThumbprint
+        );
         writeAudit(database, {
           organizationId, siteId, actorId, action: 'connector.enrollment_challenge_created',
           resourceType: 'connector', resourceId: connectorId, occurredAt: createdAt,
-          details: { enrollmentId, expiresAt }
+          details: { enrollmentId, expiresAt, keyThumbprint: normalizedKey.keyThumbprint }
         });
         database.exec('COMMIT;');
       } catch (error) {
         try { database.exec('ROLLBACK;'); } catch {}
         throw error;
       }
-      // The raw challenge is returned once; only its SHA-256 hash is persisted.
-      return { enrollmentId, challenge, connectorId, siteId, expiresAt };
+      // The raw challenge is returned once; its hash and the expected public key are persisted.
+      return { enrollmentId, challenge, connectorId, siteId, expiresAt, keyThumbprint: normalizedKey.keyThumbprint };
     },
     async completeConnectorEnrollment({ enrollmentId, challenge, publicKeyJwk, signature, now = new Date() }) {
       if (!isResourceId(enrollmentId) || typeof challenge !== 'string' ||
