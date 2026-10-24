@@ -55,6 +55,12 @@ test('learning sources persist scoped observations and safely store a verified i
     const scoped = await store.list({ organizationId: 'org-1', siteId: 'site-1' });
     assert.equal(scoped.length, 2);
     assert.equal((await store.list({ organizationId: 'org-2', siteId: 'site-1' })).length, 0);
+    const deleted = await store.delete({
+      organizationId: 'org-1', siteId: 'site-1', sourceId: image.id, actorId: 'operator-1'
+    });
+    assert.deepEqual(deleted, { deleted: true, mediaCleanupPending: false });
+    assert.equal((await (await import('node:fs/promises')).readdir(dir)).length, 0);
+    assert.equal((await store.list({ organizationId: 'org-1', siteId: 'site-1' })).length, 1);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
