@@ -66,17 +66,24 @@ function validateJwksUrl(value) {
 async function loadJwks(url, fetcher, force = false) {
   const cached = jwksCache.get(url);
   if (!force && cached && cached.expiresAt > Date.now()) return cached.keys;
-  const response = await fetcher(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(5000) });
+  const response = await fetcher(url, { headers: { accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(5000) });
   if (!response?.ok) throw new Error('jwks_fetch_failed');
   const text = await response.text();
   if (Buffer.byteLength(text, 'utf8') > MAX_JWKS_BYTES) throw new Error('jwks_response_too_large');
   const document = JSON.parse(text);
   if (!document || !Array.isArray(document.keys) || document.keys.length > 100) throw new Error('invalid_jwks');
+  const privateParameters = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth'];
   const keys = document.keys.filter(key =>
     key && key.kty === 'RSA' && typeof key.kid === 'string' && key.kid.length <= 256 &&
     (key.use === undefined || key.use === 'sig') && (key.alg === undefined || key.alg === 'RS256') &&
-    typeof key.n === 'string' && typeof key.e === 'string'
+    typeof key.n === 'string' && typeof key.e === 'string' &&
+    !privateParameters.some(parameter => key[parameter] !== undefined)
   );
+  const seenKids = new Set();
+  for (const key of keys) {
+    if (seenKids.has(key.kid)) throw new Error('duplicate_jwks_key_id');
+    seenKids.add(key.kid);
+  }
   jwksCache.set(url, { keys, expiresAt: Date.now() + JWKS_CACHE_MS });
   return keys;
 }
