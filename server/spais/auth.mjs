@@ -32,13 +32,18 @@ export function verifySpaisBearerToken(authorization, {
   }
 
   const token = authorization.slice(7).trim();
+  // Bound parsing work and reject oversized credentials before decoding JSON.
+  if (!token || Buffer.byteLength(token, 'utf8') > 16 * 1024) return deny('token_size_invalid');
   const parts = token.split('.');
   if (parts.length !== 3 || parts.some(part => !part)) return deny('malformed_token');
 
   const [encodedHeader, encodedPayload, signature] = parts;
   const header = decodeSegment(encodedHeader);
   const claims = decodeSegment(encodedPayload);
-  if (!header || !claims || header.alg !== 'HS256' || header.typ !== 'JWT') {
+  if (!header || typeof header !== 'object' || Array.isArray(header) ||
+      !claims || typeof claims !== 'object' || Array.isArray(claims) ||
+      header.alg !== 'HS256' || header.typ !== 'JWT' ||
+      header.crit !== undefined || header.b64 === false) {
     return deny('unsupported_token');
   }
 
@@ -58,11 +63,24 @@ export function verifySpaisBearerToken(authorization, {
   if (!Array.isArray(claims.organizationIds) || !Array.isArray(claims.permissions)) {
     return deny('tenant_claims_required');
   }
-  if (claims.organizationIds.some(id => typeof id !== 'string' || !id.trim())) {
+  const validResourceId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
+  if (claims.organizationIds.some(id => !validResourceId(id)) || new Set(claims.organizationIds).size !== claims.organizationIds.length) {
     return deny('invalid_organization_claim');
   }
-  if (claims.permissions.some(permission => typeof permission !== 'string' || !permission.trim())) {
+  if (claims.permissions.some(permission => typeof permission !== 'string' || !permission.trim()) ||
+      new Set(claims.permissions).size !== claims.permissions.length) {
     return deny('invalid_permission_claim');
+  }
+  if (claims.sitesByOrganization !== undefined) {
+    if (!claims.sitesByOrganization || typeof claims.sitesByOrganization !== 'object' || Array.isArray(claims.sitesByOrganization)) {
+      return deny('invalid_site_claim');
+    }
+    for (const [organizationId, siteIds] of Object.entries(claims.sitesByOrganization)) {
+      if (!claims.organizationIds.includes(organizationId) || !Array.isArray(siteIds) ||
+          siteIds.some(id => !validResourceId(id)) || new Set(siteIds).size !== siteIds.length) {
+        return deny('invalid_site_claim');
+      }
+    }
   }
 
   return {
