@@ -94,6 +94,13 @@ test('incident lifecycle is tenant/site scoped, auditable, links only approved s
   const approvedSop = (await approveSop.json()).sop;
   assert.equal(approvedSop.status, 'approved');
 
+  const draftOnlyResponse = await post('/api/v1/organizations/org-1/sops', {
+    siteId: 'site-1', policyId: 'sop-draft-only', title: 'Draft-only procedure',
+    content: 'This procedure has not been approved.', category: 'operations'
+  });
+  assert.equal(draftOnlyResponse.status, 201);
+  const draftOnlySop = (await draftOnlyResponse.json()).sop;
+
   const spoofed = await post('/api/v1/organizations/org-1/incidents', {
     siteId: 'site-1', title: 'Spoofed', organizationId: 'org-evil', evidenceState: 'independently_verified'
   });
@@ -112,7 +119,7 @@ test('incident lifecycle is tenant/site scoped, auditable, links only approved s
   assert.equal(created.sopVersionId, approvedSop.id);
 
   const draftLink = await post('/api/v1/organizations/org-1/incidents', {
-    siteId: 'site-1', title: 'Cannot link draft SOP', sopVersionId: sopDraft.id
+    siteId: 'site-1', title: 'Cannot link draft SOP', sopVersionId: draftOnlySop.id
   });
   assert.equal(draftLink.status, 409);
   assert.equal((await draftLink.json()).error, 'linked_sop_not_approved_or_not_found');
