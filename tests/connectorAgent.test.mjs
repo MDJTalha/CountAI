@@ -12,7 +12,7 @@ import {
   runConnectorOnce
 } from '../connector/agent.mjs';
 import { canonicalizeConnectorTelemetry } from '../server/spais/connectorTelemetry.mjs';
-import { readTelemetryQueue, writeTelemetryQueue } from '../connector/offlineQueue.mjs';
+import { getTelemetryQueueStatus, readTelemetryQueue, writeTelemetryQueue } from '../connector/offlineQueue.mjs';
 
 test('edge identity is generated locally with a private key file and public JWK export', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'spais-agent-key-'));
@@ -135,6 +135,9 @@ test('offline queue durably retries with a stable delivery ID and a fresh signed
     });
     assert.equal(failed.acceptedCount, 0);
     assert.equal(failed.queuedCount, 1);
+    assert.ok(failed.queuedBytes > 0);
+    assert.equal(failed.oldestQueuedAt, '2026-10-24T10:00:00.000Z');
+    assert.equal(failed.oldestQueuedAgeSeconds, 0);
     assert.equal(failed.deliveryMode, 'durable-at-least-once');
     assert.ok(firstAttempt[0].deliveryId);
     const queuedBeforeRetry = JSON.parse(await readFile(queuePath, 'utf8'));
@@ -156,6 +159,9 @@ test('offline queue durably retries with a stable delivery ID and a fresh signed
       }
     });
     assert.equal(recovered.queuedCount, 0);
+    assert.equal(recovered.queuedBytes, 3); // Empty JSON array plus newline.
+    assert.equal(recovered.oldestQueuedAt, null);
+    assert.equal(recovered.oldestQueuedAgeSeconds, 0);
     assert.equal(recovered.acceptedCount, 2);
     assert.equal(JSON.parse(await readFile(queuePath, 'utf8')).length, 0);
     assert.equal(retryMessages[0].deliveryId, firstAttempt[0].deliveryId);
@@ -212,6 +218,28 @@ test('offline queue rejects secret-bearing metadata, duplicate delivery IDs, cor
       () => readTelemetryQueue(queuePath),
       error => error.code === 'connector_queue_corrupt'
     );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('queue status reports oldest backlog age and bounded byte usage without exposing payloads', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'spais-queue-status-'));
+  const queuePath = join(dir, 'queue.json');
+  try {
+    await writeTelemetryQueue(queuePath, [
+      { deliveryId: 'delivery-status-1', eventType: 'connector.heartbeat', payload: { status: 'healthy' }, queuedAt: '2026-10-24T10:00:00.000Z' },
+      { deliveryId: 'delivery-status-2', eventType: 'camera.health', payload: { cameraId: 'camera-1', status: 'offline' }, queuedAt: '2026-10-24T10:00:30.000Z' }
+    ]);
+    const status = await getTelemetryQueueStatus(queuePath, new Date('2026-10-24T10:02:00.000Z'));
+    assert.equal(status.queuedCount, 2);
+    assert.ok(status.queuedBytes > 0 && status.queuedBytes <= 2 * 1024 * 1024);
+    assert.equal(status.oldestQueuedAt, '2026-10-24T10:00:00.000Z');
+    assert.equal(status.oldestQueuedAgeSeconds, 120);
+    assert.equal(Object.hasOwn(status, 'payload'), false);
+    const empty = await getTelemetryQueueStatus(join(dir, 'missing.json'), new Date('2026-10-24T10:02:00.000Z'));
+    assert.deepEqual(empty, { queuedCount: 0, queuedBytes: 3, oldestQueuedAt: null, oldestQueuedAgeSeconds: 0 });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
