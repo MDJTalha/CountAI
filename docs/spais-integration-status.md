@@ -67,7 +67,7 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Production-grade rate limiting/abuse controls, operational key management, and deployment monitoring.
 - Vendor-specific ONVIF/NVR adapters, independently verified recorder-side recording coverage evidence, durable offline store-and-forward, and customer lab acceptance.
 - Incident-to-SOP version linkage is implemented on `main`: incidents retain the exact approved SOP version ID, and the API rejects unapproved or out-of-scope references.
-- A trusted independent model evaluator, verifiable evaluation attestations, shadow/canary rollout, production promotion and automated rollback are not implemented. The current feature branch adds a metadata-only proposal registry for offline-evaluation review; it does not execute training/evaluation or alter production inference.
+- An independent evaluator execution service, shadow/canary rollout, production promotion and automated rollback are not implemented. The current feature branch adds signature-verified intake for external evaluator reports when a trusted RSA public JWK and explicit acceptance thresholds are configured; it does not run evaluation itself or change production inference.
 - Real-camera lab or customer pilot acceptance.
 
 
@@ -114,10 +114,19 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Regression coverage exercises authentication, bounded query validation, reported percentage arithmetic, gaps/overlaps, missing/truncated reports, and the unverified interpretation. CI and review remain pending on the feature branch.
 
 
-## Governed learning proposal registry — feature branch
+## Governed learning proposal registry — implemented on main
 - Adds authenticated site-scoped `GET`/`POST /api/v1/organizations/:organizationId/model-candidates` and `GET`/`PATCH` candidate routes.
 - Candidate records contain bounded proposal metadata, artifact and evaluation-dataset SHA-256 identifiers, and a human-authored offline evaluation plan. No model files or datasets are uploaded.
 - Lifecycle is deliberately limited to `proposed → under_review → evaluation_pending` or `rejected`; approval for `evaluation_pending` requires the separate `model:approve` permission and a different actor from the proposer.
 - The API rejects unsupported states such as `shadow`, `canary`, and `active`. There is no production promotion route and no claim that an evaluator ran.
 - Candidate state transitions and metadata creation are written to the shared SQLite audit log in the same transaction.
-- Automated HTTP coverage checks tenant/site isolation, spoofed fields, required digests and evaluation plan, self-approval denial, audit history, and rejection of attempted production promotion. CI and review remain pending for this branch.
+- Automated HTTP coverage checks tenant/site isolation, spoofed fields, required digests and evaluation plan, self-approval denial, audit history, and rejection of attempted production promotion. This registry is merged on `main`; it does not execute training or evaluation.
+
+
+## Trusted offline evaluation attestations — feature branch
+- Adds `POST` and `GET /api/v1/organizations/:organizationId/model-candidates/:candidateId/evaluations`, scoped to the authorized organization and active site.
+- Evaluation submission requires `model:evaluate` permission, a server-configured RSA public JWK, and explicitly configured thresholds: `SPAIS_EVALUATION_MIN_SAMPLE_COUNT`, `SPAIS_EVALUATION_MIN_PRECISION`, `SPAIS_EVALUATION_MIN_RECALL`, and `SPAIS_EVALUATION_MAX_FALSE_POSITIVE_RATE`.
+- The signed report binds the candidate ID, organization/site, run ID, artifact digest, evaluation-dataset digest, evaluator version, timestamp, nonce, sample count, precision, recall, and false-positive rate. Signature verification uses the server-configured public key, never a key supplied by the request.
+- The server computes pass/fail against configured thresholds, stores immutable evaluation metadata, records the attestation digest, rejects replays, and audits the result in the same SQLite transaction.
+- Evaluation reports must match the candidate's artifact and dataset digests and the candidate must be approved for offline evaluation. Candidate state remains `evaluation_pending`; a passing report does not approve or deploy a production model.
+- CI tests valid signatures, tampering, threshold pass/fail, replay rejection, scope enforcement, audit history, and the continued absence of a production-promotion path. CI and review remain pending for this branch.
