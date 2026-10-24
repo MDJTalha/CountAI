@@ -167,9 +167,20 @@ const server = createServer(async (req, res) => {
       principal: authentication.principal, organizationId, siteId, action: 'connector:manage'
     });
     if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
+    let input;
+    try { input = await readJsonBody(req, 8 * 1024); }
+    catch (error) {
+      const status = error.code === 'request_body_too_large' ? 413 : 400;
+      return json(res, status, { error: error.code || 'invalid_request_body' });
+    }
+    if (!input || typeof input !== 'object' || Array.isArray(input) ||
+        Object.keys(input).length !== 1 || !Object.hasOwn(input, 'publicKeyJwk')) {
+      return json(res, 400, { error: 'invalid_public_key' });
+    }
     try {
       const challenge = await resourceStore.createConnectorEnrollmentChallenge({
-        organizationId, siteId, connectorId, actorId: authentication.principal.subjectId
+        organizationId, siteId, connectorId, actorId: authentication.principal.subjectId,
+        publicKeyJwk: input.publicKeyJwk
       });
       return json(res, 201, { enrollment: challenge });
     } catch (error) {
@@ -195,10 +206,10 @@ const server = createServer(async (req, res) => {
       const status = error.code === 'request_body_too_large' ? 413 : 400;
       return json(res, status, { error: error.code || 'invalid_request_body' });
     }
-    const allowedFields = new Set(['challenge', 'publicKeyJwk', 'signature']);
+    const allowedFields = new Set(['challenge', 'signature']);
     if (!input || typeof input !== 'object' || Array.isArray(input) ||
         Object.keys(input).some(key => !allowedFields.has(key)) ||
-        !input.challenge || !input.publicKeyJwk || !input.signature) {
+        !input.challenge || !input.signature) {
       return json(res, 400, { error: 'invalid_enrollment_proof' });
     }
     try {
