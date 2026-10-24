@@ -140,7 +140,11 @@ test('site, camera and connector metadata require verified identity and enforce 
   assert.equal(updated.status, 200);
   assert.equal((await updated.json()).resource.name, 'Lobby Camera Updated');
 
-  const audit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit`, { headers: auth() });
+  const unscopedAudit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit`, { headers: auth() });
+  assert.equal(unscopedAudit.status, 400);
+  assert.equal((await unscopedAudit.json()).error, 'site_id_required');
+
+  const audit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit?siteId=site-1`, { headers: auth() });
   assert.equal(audit.status, 200);
   const auditBody = await audit.json();
   assert.ok(auditBody.events.some(item => item.action === 'resource.created' && item.resourceId === 'camera-1'));
