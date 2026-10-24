@@ -115,9 +115,10 @@ export function App() {
     } catch (e) { notify(e instanceof Error ? e.message : 'AI analysis failed.', true); setEngine('Unavailable'); }
     finally { setBusy(false); }
   }
-  async function persist(list = detections) {
+  async function persist(list = detections): Promise<boolean> {
     const session: CountSession = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), title: filename || 'Counting session', mode: 'photo', target: target || 'all objects', detections: list, totals: totalsByCategory(list) };
-    try { await saveSession(session); setSessions(await listSessions()); } catch { notify('Results are ready, but the browser could not save this session.'); }
+    try { await saveSession(session); setSessions(await listSessions()); return true; }
+    catch { notify('Results are ready in this view, but the browser could not save this session.', true); return false; }
   }
   function openEditModal() {
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -127,13 +128,15 @@ export function App() {
   function addManual() { setEditingId(null); setEditCategory(target.trim() || 'object'); setEditConfidence(''); openEditModal(); }
   function editDetection(d: Detection) { setEditingId(d.id); setEditCategory(d.category); setEditConfidence(d.confidence == null ? '' : String(d.confidence)); openEditModal(); }
   async function saveEdit() {
-    if (!editCategory.trim()) return;
+    if (!editCategory.trim()) return notify('Enter a category before saving.', true);
+    if (editConfidence !== '' && (!Number.isFinite(Number(editConfidence)) || Number(editConfidence) < 0 || Number(editConfidence) > 1)) return notify('Confidence must be a number from 0 to 1.', true);
     let updated: Detection[];
     if (editingId) updated = detections.map(d => d.id === editingId ? { ...d, category: editCategory.trim().slice(0,100), confidence: editConfidence === '' ? undefined : Math.max(0, Math.min(1, Number(editConfidence))), source: 'manual' as const } : d);
     else updated = [...detections, { id: crypto.randomUUID(), category: editCategory.trim().slice(0,100), bbox: [image ? image.naturalWidth * .3 : 0, image ? image.naturalHeight * .3 : 0, image ? image.naturalWidth * .4 : 0, image ? image.naturalHeight * .4 : 0] as [number,number,number,number], source: 'manual' }];
-    setDetections(updated); closeEditModal(); await persist(updated); notify('Correction saved. Category totals have been recalculated.');
+    setDetections(updated); closeEditModal();
+    if (await persist(updated)) notify('Correction saved. Category totals have been recalculated.');
   }
-  async function removeDetection(id: string) { const next = detections.filter(d => d.id !== id); setDetections(next); await persist(next); notify('Detection removed and totals recalculated.'); }
+  async function removeDetection(id: string) { const next = detections.filter(d => d.id !== id); setDetections(next); if (await persist(next)) notify('Detection removed and totals recalculated.'); }
   async function startCamera() {
     if (!navigator.mediaDevices?.getUserMedia) return notify('Camera requires HTTPS or localhost. You can upload a photo instead.', true);
     try { const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } } }); setStream(s); setCameraOpen(true); }
