@@ -96,3 +96,19 @@ test('OIDC verifier rejects non-HTTPS remote JWKS URLs and token-supplied key UR
   });
   assert.deepEqual(tokenSuppliedUrl, { authenticated: false, reason: 'unsupported_token' });
 });
+
+
+test('OIDC verifier rejects private-key material in JWKS and non-string tenant IDs', async () => {
+  clearSpaisJwksCacheForTests();
+  const privateJwk = { ...jwk, d: privateKey.export({ format: 'jwk' }).d };
+  const privateKeyResult = await verifySpaisBearerTokenAsync(`Bearer ${makeToken()}`, {
+    jwksUrl, issuer, audience, fetcher: mockFetcher([privateJwk])
+  });
+  assert.deepEqual(privateKeyResult, { authenticated: false, reason: 'signing_key_not_found' });
+
+  clearSpaisJwksCacheForTests();
+  const invalidClaims = await verifySpaisBearerTokenAsync(`Bearer ${makeToken({ claimsExtra: { organizationIds: [123] } })}`, {
+    jwksUrl, issuer, audience, fetcher: mockFetcher([jwk])
+  });
+  assert.deepEqual(invalidClaims, { authenticated: false, reason: 'invalid_organization_claim' });
+});
