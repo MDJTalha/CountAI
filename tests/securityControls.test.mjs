@@ -43,3 +43,8 @@ test('security headers are restrictive without forcing HSTS for local HTTP', () 
   applySecurityHeaders(response, { enableHsts: true });
   assert.match(headers.get('strict-transport-security'), /max-age=31536000/);
 });
+
+test('rate limiter rejects invalid configuration instead of silently disabling limits', () => {
+  assert.throws(() => createApiRateLimiter({ apiLimit: Number.NaN }), /apiLimit must be a positive safe integer/);
+  assert.throws(() => createApiRateLimiter({ windowMs: 0 }), /windowMs must be a positive safe integer/);
+});
