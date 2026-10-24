@@ -83,15 +83,14 @@ try {
   await dialog.waitFor({ state: 'hidden' });
   await page.getByText('Correction saved. Category totals have been recalculated.').waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Open camera' }).click();
-  const video = page.locator('video');
+  const video = page.locator('.camera-wrap video');
   await video.waitFor({ state: 'visible' });
-  await page.waitForFunction(() => document.querySelector('video')?.srcObject
-    && document.querySelector('video').srcObject.getVideoTracks().some(track => track.readyState === 'live'));
+  const cameraStream = await video.evaluateHandle(element => element.srcObject);
+  await page.waitForFunction(stream => stream
+    && stream.getVideoTracks().some(track => track.readyState === 'live'), cameraStream);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await page.waitForFunction(() => {
-    const stream = document.querySelector('video')?.srcObject;
-    return !stream || stream.getTracks().every(track => track.readyState === 'ended');
-  });
+  await page.waitForFunction(stream => stream.getTracks().every(track => track.readyState === 'ended'), cameraStream);
+  await cameraStream.dispose();
 
   assert.deepEqual(pageErrors, [], `Unexpected browser runtime errors: ${pageErrors.join('; ')}`);
 
