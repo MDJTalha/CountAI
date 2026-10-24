@@ -112,5 +112,6 @@ test('built application is served with basic security headers', async () => {
   assert.equal(response.headers.get('x-frame-options'), 'DENY');
   assert.equal(response.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
   assert.equal(response.headers.get('permissions-policy'), 'camera=(self), microphone=(), geolocation=()');
+  assert.equal(response.headers.get('cache-control'), 'no-cache');
   assert.match(await response.text(), /<html|<!doctype html/i);
 });
