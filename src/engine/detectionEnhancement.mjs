@@ -1,3 +1,15 @@
+export function getInferenceSize(width, height, maxDimension = 1280) {
+  if (![width, height, maxDimension].every(Number.isFinite) || width <= 0 || height <= 0 || maxDimension <= 0) {
+    throw new RangeError('Image dimensions and maximum inference dimension must be positive finite numbers.');
+  }
+  const scale = Math.min(1, maxDimension / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+    scale
+  };
+}
+
 export function createTileRegions(width, height, minDimension = 480, minLongestDimension = 900) {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return [];
   if (Math.min(width, height) < minDimension || Math.max(width, height) < minLongestDimension) return [];
