@@ -352,12 +352,6 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
       if (!isResourceId(organizationId) || !isResourceId(siteId) ||
           !isResourceId(connectorId) || !isResourceId(actorId)) throw invalid('invalid_trusted_scope');
       const database = await getDatabase();
-      const connector = database.prepare(`
-        SELECT * FROM spais_resources
-        WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
-      `).get(organizationId, connectorId, siteId);
-      if (!connector || connector.status !== 'pending') throw invalid('connector_not_enrollable');
-
       const enrollmentId = randomUUID();
       const challenge = randomBytes(32).toString('base64url');
       const challengeHash = createHash('sha256').update(challenge).digest('hex');
@@ -365,6 +359,22 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
       const expiresAt = new Date(now.getTime() + Math.max(60, Math.min(900, ttlSeconds)) * 1000).toISOString();
       database.exec('BEGIN IMMEDIATE;');
       try {
+        const connector = database.prepare(`
+          SELECT * FROM spais_resources
+          WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
+        `).get(organizationId, connectorId, siteId);
+        if (!connector || connector.status !== 'pending') throw invalid('connector_not_enrollable');
+        const superseded = database.prepare(`
+          UPDATE spais_connector_enrollments SET status = 'revoked'
+          WHERE organization_id = ? AND site_id = ? AND connector_id = ? AND status = 'pending'
+        `).run(organizationId, siteId, connectorId);
+        if (superseded.changes > 0) {
+          writeAudit(database, {
+            organizationId, siteId, actorId, action: 'connector.enrollment_challenge_superseded',
+            resourceType: 'connector', resourceId: connectorId, occurredAt: createdAt,
+            details: { supersededCount: superseded.changes }
+          });
+        }
         database.prepare(`
           INSERT INTO spais_connector_enrollments
             (enrollment_id, organization_id, site_id, connector_id, challenge_hash, status, expires_at, created_by, created_at)
