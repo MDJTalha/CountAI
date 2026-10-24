@@ -135,3 +135,38 @@ test('media ingestion enforces signatures, size caps and explicit authorization'
   });
   assert.equal(noConsent.status, 400);
 });
+
+test('learning-source deletion requires model management permission and preserves scoped behavior', async () => {
+  const created = await post({
+    siteId: 'site-1', sourceType: 'observation', title: 'Observation to delete',
+    contentText: 'This record should be deleted by an authorized manager.',
+    consentConfirmed: true
+  });
+  assert.equal(created.status, 201, output);
+  const source = (await created.json()).source;
+  const url = baseUrl + '/api/v1/organizations/org-1/learning-sources/' + source.id + '?siteId=site-1';
+
+  const denied = await fetch(url, { method: 'DELETE', headers: auth() });
+  assert.equal(denied.status, 403);
+
+  const deleted = await fetch(url, {
+    method: 'DELETE',
+    headers: auth({ permissions: ['site:read', 'site:manage', 'model:read', 'model:propose', 'model:manage'] })
+  });
+  assert.equal(deleted.status, 200, output);
+  assert.deepEqual(await deleted.json(), {
+    sourceId: source.id,
+    deleted: true,
+    mediaCleanupPending: false
+  });
+
+  const list = await fetch(baseUrl + '/api/v1/organizations/org-1/learning-sources?siteId=site-1', { headers: auth() });
+  assert.equal(list.status, 200);
+  assert.equal((await list.json()).sources.some(item => item.id === source.id), false);
+
+  const wrongSite = await fetch(url.replace('site-1', 'site-2'), {
+    method: 'DELETE',
+    headers: auth({ permissions: ['site:read', 'site:manage', 'model:read', 'model:propose', 'model:manage'] })
+  });
+  assert.equal(wrongSite.status, 403);
+});
