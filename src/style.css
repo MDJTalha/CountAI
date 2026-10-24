@@ -53,3 +53,27 @@ button:active:not(:disabled){transform:translateY(1px)}
 @media(max-width:800px){.app-shell{padding-left:18px;padding-right:18px}.workspace-nav{margin-left:-18px;margin-right:-18px;padding-left:18px;padding-right:18px}.dashboard-metric{grid-column:span 6}.dashboard-action{grid-column:span 6}.dashboard-recent{grid-column:span 12}.dashboard-side{grid-column:span 12}.dashboard-welcome{align-items:flex-start;flex-direction:column}}
 @media(max-width:560px){.app-shell{padding-left:12px;padding-right:12px}.workspace-nav{margin-left:-12px;margin-right:-12px;padding:9px 12px;gap:3px}.nav-item{padding:10px 12px;font-size:11px}.dashboard-page{padding-top:0}.dashboard-welcome{margin:12px 0 19px}.dashboard-welcome h1{font-size:30px;letter-spacing:-1.1px}.dashboard-grid{gap:10px}.dashboard-card{padding:15px;border-radius:15px}.dashboard-metric{grid-column:span 6}.dashboard-action{grid-column:span 12;min-height:160px}.dashboard-recent,.dashboard-side{grid-column:span 12}.dashboard-metric strong{font-size:27px}.topbar{height:70px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+
+/* Live SPAIS service-readiness panel. API configuration is not a claim of camera or recorder health. */
+.spais-system-status{grid-column:span 12}
+.spais-status-heading{display:flex;align-items:center;gap:12px;min-width:0}
+.spais-status-heading>div{min-width:0}
+.spais-status-heading p{font-size:11px;color:var(--muted);line-height:1.6;margin:5px 0 0;max-width:660px}
+.spais-refresh-button{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;min-height:38px}
+.spais-refresh-button:disabled{opacity:.6;cursor:wait}
+.spais-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.spais-status-item{display:flex;align-items:center;gap:10px;min-width:0;padding:14px 12px;border:1px solid #e3ece6;border-radius:13px;background:#fbfdfc}
+.spais-status-icon{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:10px;background:#edf6f1;color:#367b67}
+.spais-status-item>div{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+.spais-status-item .metric-label{font-size:9px}
+.spais-status-item strong{font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+.spais-status-pill{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:999px;padding:5px 7px;font-size:8px;font-weight:800;letter-spacing:.15px;white-space:nowrap}
+.spais-status-pill.is-ready{background:#e3f5eb;color:#226b4e}
+.spais-status-pill.is-warning{background:#fff3d9;color:#8a5b10}
+.spais-status-pill.is-unavailable{background:#fce9e7;color:#a43f37}
+.spais-status-pill.is-loading{background:#edf1ef;color:#64736c}
+.spais-status-footnote{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;font-size:10px;color:#7c8b83}
+.spais-status-disclaimer{margin:12px 0 0;padding-top:11px;border-top:1px solid #edf1ee;font-size:10px;line-height:1.7;color:#77877f}
+@media(max-width:950px){.spais-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.spais-system-status .dashboard-card-head{align-items:flex-start;flex-direction:column}.spais-refresh-button{align-self:flex-start}.spais-status-grid{grid-template-columns:minmax(0,1fr)}.spais-status-item{padding:12px}.spais-status-footnote{flex-direction:column;gap:5px}}
