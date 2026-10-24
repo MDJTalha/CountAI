@@ -150,7 +150,7 @@ test('site, camera and connector metadata require verified identity and enforce 
   assert.ok(auditBody.events.some(item => item.action === 'resource.created' && item.resourceId === 'camera-1'));
   assert.ok(auditBody.events.some(item => item.action === 'resource.updated' && item.resourceId === 'camera-1'));
 
-  const noAuditPermission = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit`, {
+  const noAuditPermission = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit?siteId=site-1`, {
     headers: auth({ permissions: ['site:read'] })
   });
   assert.equal(noAuditPermission.status, 403);
