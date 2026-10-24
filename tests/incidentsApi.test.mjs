@@ -162,6 +162,40 @@ test('incident lifecycle is tenant/site scoped, auditable, links only approved s
   });
   assert.equal(noPermission.status, 403);
 
+  const idempotentInput = {
+    siteId: 'site-1', title: 'Retry-safe connector incident', description: 'Repeated HTTP submission should not duplicate this incident.',
+    severity: 'medium', source: 'camera_health'
+  };
+  const idempotencyHeaders = { ...auth(), 'content-type': 'application/json', 'idempotency-key': 'camera-health-retry-0001' };
+  const firstCreate = await fetch(baseUrl + '/api/v1/organizations/org-1/incidents', {
+    method: 'POST', headers: idempotencyHeaders, body: JSON.stringify(idempotentInput)
+  });
+  assert.equal(firstCreate.status, 201);
+  const firstIncident = (await firstCreate.json()).incident;
+
+  const retryCreate = await fetch(baseUrl + '/api/v1/organizations/org-1/incidents', {
+    method: 'POST', headers: idempotencyHeaders, body: JSON.stringify(idempotentInput)
+  });
+  assert.equal(retryCreate.status, 200);
+  const retryBody = await retryCreate.json();
+  assert.equal(retryBody.idempotentReplay, true);
+  assert.equal(retryBody.incident.id, firstIncident.id);
+
+  const conflictingReuse = await fetch(baseUrl + '/api/v1/organizations/org-1/incidents', {
+    method: 'POST', headers: idempotencyHeaders,
+    body: JSON.stringify({ ...idempotentInput, title: 'Different incident under same key' })
+  });
+  assert.equal(conflictingReuse.status, 409);
+  assert.equal((await conflictingReuse.json()).error, 'idempotency_key_reused_with_different_payload');
+
+  const invalidKey = await fetch(baseUrl + '/api/v1/organizations/org-1/incidents', {
+    method: 'POST',
+    headers: { ...auth(), 'content-type': 'application/json', 'idempotency-key': 'bad key' },
+    body: JSON.stringify(idempotentInput)
+  });
+  assert.equal(invalidKey.status, 400);
+  assert.equal((await invalidKey.json()).error, 'invalid_idempotency_key');
+
   const audit = await fetch(baseUrl + '/api/v1/organizations/org-1/audit?siteId=site-1', { headers: auth() });
   assert.equal(audit.status, 200);
   const actions = (await audit.json()).events.filter(event => event.resourceType === 'incident' && event.resourceId === created.id).map(event => event.action);

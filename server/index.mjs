@@ -529,8 +529,16 @@ const server = createServer(async (req, res) => {
             return json(res, 409, { error: 'linked_sop_not_approved_or_not_found' });
           }
         }
-        const incident = await incidentStore.create({ organizationId, actorId: authentication.principal.subjectId, input });
-        return json(res, 201, { incident });
+        const idempotencyKey = req.headers['idempotency-key'];
+        if (idempotencyKey !== undefined &&
+            (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey))) {
+          return json(res, 400, { error: 'invalid_idempotency_key' });
+        }
+        const result = await incidentStore.create({
+          organizationId, actorId: authentication.principal.subjectId, input, idempotencyKey
+        });
+        if (result.replayed) return json(res, 200, { incident: result.incident, idempotentReplay: true });
+        return json(res, 201, { incident: result.incident });
       }
       if (req.method === 'PATCH') {
         const incident = await incidentStore.transition({
@@ -549,6 +557,9 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { organizationId, siteId, incidents, count: incidents.length, limit });
     } catch (error) {
       if (error.code === 'incident_not_found') return json(res, 404, { error: 'incident_not_found' });
+      if (error.code === 'invalid_idempotency_key') return json(res, 400, { error: error.code });
+      if (error.code === 'idempotency_key_reused_with_different_payload') return json(res, 409, { error: error.code });
+      if (error.code === 'idempotency_record_corrupt') return json(res, 500, { error: error.code });
       if (error.code === 'invalid_incident_transition') return json(res, 409, { error: error.code, details: error.validationErrors || [] });
       console.error('SPAIS incident request failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'incident_request_failed' });
