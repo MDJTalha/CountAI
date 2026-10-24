@@ -121,7 +121,7 @@ export function App() {
       <button className={activeWorkspace === 'photo' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'photo'} onClick={() => setActiveWorkspace('photo')}>Photo Review</button>
       <button className={activeWorkspace === 'history' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'history'} onClick={() => setActiveWorkspace('history')}>History</button>
       <button className={activeWorkspace === 'analytics' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'analytics'} onClick={() => setActiveWorkspace('analytics')}>Analytics</button>
-      <button className={activeWorkspace === 'governance' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'governance'} onClick={() => setActiveWorkspace('governance')}>Incidents &amp; SOPs</button>
+      <button className={activeWorkspace === 'governance' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'governance'} onClick={() => setActiveWorkspace('governance')}>Governance, AI &amp; SOPs</button>
       <button className={activeWorkspace === 'operations' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'operations'} onClick={() => setActiveWorkspace('operations')}>Sites &amp; Cameras</button>
     </nav>
     <div style={{ display: activeWorkspace === 'dashboard' ? undefined : 'none' }}>
