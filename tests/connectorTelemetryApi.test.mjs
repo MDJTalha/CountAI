@@ -149,6 +149,13 @@ test('enrolled connector telemetry verifies signatures, enforces freshness and r
   assert.equal(duplicateReceipt.duplicate, true);
   assert.equal(duplicateReceipt.telemetryId, receipt.telemetryId);
 
+  const conflictingDelivery = makeMessage('connector.heartbeat', {
+    status: 'degraded', uptimeSeconds: 3600, version: '1.0.0'
+  }, { deliveryId: 'delivery-heartbeat-1' });
+  const conflictResponse = await post(telemetryPath, conflictingDelivery, { 'content-type': 'application/json' });
+  assert.equal(conflictResponse.status, 409);
+  assert.equal((await conflictResponse.json()).error, 'telemetry_delivery_id_conflict');
+
   const replay = await post(telemetryPath, heartbeat, { 'content-type': 'application/json' });
   assert.equal(replay.status, 409);
   assert.equal((await replay.json()).error, 'telemetry_replay_detected');
