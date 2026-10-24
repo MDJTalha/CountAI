@@ -15,7 +15,8 @@ function connectorError(code, message = code) {
 function validateUrl(value, { allowHttp = false, allowHttpLocalhost = false } = {}) {
   let url;
   try { url = new URL(value); } catch { throw connectorError('invalid_endpoint_url'); }
-  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash) {
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash ||
+      [...url.searchParams.keys()].some(key => /(token|secret|password|credential|api.?key|access.?key)/i.test(key))) {
     throw connectorError('unsafe_endpoint_url');
   }
   if (url.protocol === 'http:' && !allowHttp &&
@@ -122,10 +123,10 @@ async function postJson(fetchImpl, url, body, timeoutMs) {
 }
 
 export async function completeConnectorEnrollment({
-  serverUrl, enrollmentId, challenge, privateKey, allowHttpLocalhost = false,
+  serverUrl, enrollmentId, challenge, privateKey, allowHttp = false, allowHttpLocalhost = false,
   fetchImpl = fetch, timeoutMs = 5000
 }) {
-  const base = validateUrl(serverUrl, { allowHttpLocalhost }).toString().replace(/\/$/, '');
+  const base = validateUrl(serverUrl, { allowHttp, allowHttpLocalhost }).toString().replace(/\/$/, '');
   const signature = createEnrollmentProof({ enrollmentId, challenge, privateKey });
   return postJson(fetchImpl, base + '/api/v1/connector-enrollments/' + encodeURIComponent(enrollmentId) + '/complete', {
     challenge, signature
@@ -155,6 +156,10 @@ async function readRecorderSnapshot({ url, bearerToken, allowHttp, fetchImpl, ti
       recordingCoverage.length > MAX_CAMERA_REPORTS_PER_POLL) {
     throw connectorError('invalid_recorder_response');
   }
+  if (recordingCoverage.some(item =>
+    !item || typeof item !== 'object' || typeof item.evidenceDigest !== 'string' ||
+    !/^[a-f0-9]{64}$/i.test(item.evidenceDigest)
+  )) throw connectorError('recorder_evidence_digest_required');
   return { cameraHealth, recordingCoverage };
 }
 
@@ -241,6 +246,7 @@ async function main() {
       enrollmentId: requiredEnvironment('SPAIS_ENROLLMENT_ID'),
       challenge: requiredEnvironment('SPAIS_ENROLLMENT_CHALLENGE'),
       privateKey,
+      allowHttp: config.allowInsecureServerHttp,
       allowHttpLocalhost: config.allowInsecureServerHttp
     });
     process.stdout.write(JSON.stringify({ completed: true, enrollmentId: result.enrollment?.enrollmentId ?? 'completed' }) + '\n');
