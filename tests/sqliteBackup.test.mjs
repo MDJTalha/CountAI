@@ -25,7 +25,7 @@ test('SQLite backup creates a consistent, integrity-checked, private snapshot', 
     assert.ok(result.bytes > 0);
     backup = new DatabaseSync(result.backupPath);
     assert.equal(backup.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
-    assert.deepEqual(backup.prepare('SELECT action FROM audit_events').get(), { action: 'test.event' });
+    assert.equal(backup.prepare('SELECT action FROM audit_events').get().action, 'test.event');
     backup.close();
     const info = await stat(result.backupPath);
     if (process.platform !== 'win32') {
