@@ -45,15 +45,17 @@ export function isResourceId(value) {
 }
 
 /** Return a stable, versioned descriptor; it contains no tenant/customer data. */
-export function getSpaisContractManifest() {
+export function getSpaisContractManifest({ authenticationConfigured = false, tenantResourceApiEnabled = false } = {}) {
   return Object.freeze({
     apiVersion: SPAIS_API_VERSION,
     contractVersion: SPAIS_CONTRACT_VERSION,
     resourceTypes: [...SPAIS_RESOURCE_TYPES],
-    authenticationConfigured: false,
-    tenantResourceApiEnabled: false,
+    authenticationConfigured: Boolean(authenticationConfigured),
+    tenantResourceApiEnabled: Boolean(tenantResourceApiEnabled),
     notes: [
-      "Tenant-scoped resource routes remain disabled until a trusted authentication and authorization adapter is configured.",
+      tenantResourceApiEnabled
+        ? "Site, camera and connector metadata APIs are enabled with verified bearer-token scope and configured SQLite persistence."
+        : "Tenant-scoped resource routes remain disabled until trusted authentication and persistent storage are configured.",
       "Browser-local sessions are not server-side tenant records.",
       "Recorder health requires recorder-side evidence; browser camera status is not recording assurance."
     ]
