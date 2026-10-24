@@ -167,6 +167,19 @@ This roadmap is incremental. Each phase must deliver a testable, reviewable slic
 - Validate one capability at a time: event contract, auth/tenant boundary, connector, recorder evidence, incident lifecycle, policy governance.
 - Prefer a versioned API or small shared schema package over cross-repository imports of internal implementation modules.
 
+## Execution status — 2026-10-24
+
+| Work item | Status | Evidence / next gate |
+|---|---|---|
+| Phase 0: baseline and roadmap | In progress | Roadmap PR #16; local workstation pull and browser re-validation still require the user's machine |
+| Phase 1A: versioned event contract | Merged to main | [PR #17](https://github.com/MDJTalha/CountAI/pull/17); CI passed on the exact merged head |
+| Phase 1B: local live-session summaries | Implemented; awaiting main integration | [PR #19](https://github.com/MDJTalha/CountAI/pull/19); bounded local storage, session/crossing/health/reset events, recent-session UI, delete control, and six storage tests |
+| Phase 1C: CI coverage for new suites | Added and verified | [Successful main-targeted CI run](https://github.com/MDJTalha/CountAI/actions/runs/40058761033) explicitly executes `test:operational-events` (7 passing) and `test:live-sessions` (6 passing) |
+| Phase 2: enterprise security contracts | Design drafted; implementation not started | [Domain/security contract](https://github.com/MDJTalha/CountAI/blob/plan/enterprise-spais-evolution/docs/enterprise-domain-contracts.md); next build the versioned types, backend authorization and negative tenant-isolation tests after Phase 1 integration |
+| Phases 3–7 | Not started | Connector, recorder evidence, incident lifecycle, SOP governance, learner and pilot remain gated |
+
 ## Immediate next work item
 
-Start Phase 0 by synchronizing the local CountAI repository, running the committed test suite and browser checklist, then implement Phase 1's versioned event contract and local live-session summaries behind tests. Do not start custom model training or real NVR access before those foundations and their validation gates are in place.
+Phase 1B is implemented and its main-targeted CI run passed; PR #19 is open for main integration. Next, implement Phase 2's versioned organization/site/camera/connector/incident/policy/model/audit types and backend-enforced tenant isolation tests. The contract design is drafted in `docs/enterprise-domain-contracts.md`. Do not start real NVR access or model training before these foundations and their validation gates are in place.
+
+Local browser validation is still required after the user pulls the accepted changes. A passing hosted build cannot prove real-camera behavior, offline inference, or visual usability.
