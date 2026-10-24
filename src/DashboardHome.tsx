@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, BarChart3, Camera, Clock3, ImagePlus, Layers3, ShieldCheck, Sparkles } from 'lucide-react';
+import { Activity, ArrowRight, BarChart3, Camera, ImagePlus, Layers3, ShieldCheck, Sparkles } from 'lucide-react';
 import type { CountSession } from './types/counting';
 
 type Workspace = 'dashboard' | 'live' | 'photo' | 'history' | 'analytics';
