@@ -80,6 +80,7 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
       setCandidates(body.candidates);
       setMessage(`Loaded ${body.count} learning proposal(s). No model was evaluated or deployed by this registry.`);
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not load learning proposals.');
       setCandidates([]);
     } finally { setBusy(false); }
@@ -98,6 +99,7 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
       setEvaluationHistory(current => ({ ...current, [candidate.id]: body.evaluations }));
       setMessage(`Loaded ${body.count} signed evaluation report(s). A passing result is not production approval.`);
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not load evaluation reports.');
     } finally { setBusy(false); }
   }
@@ -124,6 +126,7 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
       setTitle(''); setRationale(''); setProposedVersion(''); setArtifactSha256(''); setEvaluationDatasetSha256('');
       await loadCandidates();
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not create learning proposal.');
     } finally { setBusy(false); }
   }
@@ -141,6 +144,7 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
       setNotes(current => ({ ...current, [candidate.id]: '' }));
       await loadCandidates();
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not update learning proposal.');
     } finally { setBusy(false); }
   }
