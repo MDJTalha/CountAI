@@ -47,6 +47,7 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 ## Customer-controlled edge connector pilot
 - Added `connector/agent.mjs`: a no-inbound-listener Node.js pilot agent that generates a local RSA identity, completes one-time proof-of-possession enrollment, and sends signed metadata telemetry to the configured SPAIS API.
 - The agent can poll one explicitly configured read-only recorder-status endpoint and forward bounded camera-health and recording-coverage reports; it performs no discovery/scanning and sends no frames or images.
+- This feature branch adds a bounded atomic metadata queue for offline store-and-forward, stable delivery IDs, and server-side deduplication for retries whose prior response was lost. The queue is capped at 1,000 events / 2 MiB and rejects symlink/non-regular queue files. Connector diagnostics expose queue depth, serialized bytes, and oldest queued-item age without exposing payloads. This remains pilot-grade and is not independently validated on a customer host.
 - The agent accepts only configured endpoint URLs, rejects URL-embedded credentials and secret-like query parameters, supports explicit HTTP opt-in for customer-approved local recorder endpoints, and never logs credentials or payloads.
 - Recorder coverage reports remain `reported_not_independently_verified`. This generic HTTP adapter is not a vendor-specific ONVIF/NVR integration and is not pilot-accepted or production-approved until customer lab validation.
 
@@ -65,9 +66,9 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Deployment-specific OIDC identity-provider configuration, identity lifecycle operations, emergency key revocation procedures and operational secret management.
 - Organization CRUD and broader tenant administration workflows beyond the current site/camera/connector metadata registry.
 - Production-grade rate limiting/abuse controls, operational key management, and deployment monitoring.
-- Vendor-specific ONVIF/NVR adapters, independently verified recorder-side recording coverage evidence, durable offline store-and-forward, and customer lab acceptance.
+- Vendor-specific ONVIF/NVR adapters, independently verified recorder-side recording coverage evidence, production-grade queue monitoring/backup/recovery procedures, and customer lab acceptance.
 - Incident-to-SOP version linkage is implemented on `main`: incidents retain the exact approved SOP version ID, and the API rejects unapproved or out-of-scope references.
-- An independent evaluator execution service, shadow/canary rollout, production promotion and automated rollback are not implemented. The current feature branch adds signature-verified intake for external evaluator reports when a trusted RSA public JWK and explicit acceptance thresholds are configured; it does not run evaluation itself or change production inference.
+- Signed evaluator-report intake is implemented on main: it verifies an external evaluator signature against a server-configured RSA JWK, applies server-configured sample/precision/recall/false-positive thresholds, stores immutable evaluation metadata, rejects replay, and audits results. It does not execute evaluation or change candidate lifecycle into a deployment state. This feature branch adds an API regression suite for signature verification, thresholds, replay, scope, and digest binding. An independent evaluator execution service, shadow/canary rollout, production promotion and automated rollback remain unimplemented.
 - Real-camera lab or customer pilot acceptance.
 
 

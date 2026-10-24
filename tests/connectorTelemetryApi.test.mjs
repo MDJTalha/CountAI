@@ -132,12 +132,29 @@ test('enrolled connector telemetry verifies signatures, enforces freshness and r
 
   const heartbeat = makeMessage('connector.heartbeat', {
     status: 'healthy', uptimeSeconds: 3600, version: '1.0.0'
-  });
+  }, { deliveryId: 'delivery-heartbeat-1' });
   const accepted = await post(telemetryPath, heartbeat, { 'content-type': 'application/json' });
   assert.equal(accepted.status, 202);
   const receipt = (await accepted.json()).receipt;
   assert.equal(receipt.trustLevel, 'connector-signed-report');
   assert.equal(receipt.eventType, 'connector.heartbeat');
+
+  // Offline retries use a new nonce/signature but preserve the delivery ID and payload.
+  const retry = makeMessage('connector.heartbeat', {
+    status: 'healthy', uptimeSeconds: 3600, version: '1.0.0'
+  }, { deliveryId: 'delivery-heartbeat-1' });
+  const duplicate = await post(telemetryPath, retry, { 'content-type': 'application/json' });
+  assert.equal(duplicate.status, 202);
+  const duplicateReceipt = (await duplicate.json()).receipt;
+  assert.equal(duplicateReceipt.duplicate, true);
+  assert.equal(duplicateReceipt.telemetryId, receipt.telemetryId);
+
+  const conflictingDelivery = makeMessage('connector.heartbeat', {
+    status: 'degraded', uptimeSeconds: 3600, version: '1.0.0'
+  }, { deliveryId: 'delivery-heartbeat-1' });
+  const conflictResponse = await post(telemetryPath, conflictingDelivery, { 'content-type': 'application/json' });
+  assert.equal(conflictResponse.status, 409);
+  assert.equal((await conflictResponse.json()).error, 'telemetry_delivery_id_conflict');
 
   const replay = await post(telemetryPath, heartbeat, { 'content-type': 'application/json' });
   assert.equal(replay.status, 409);
@@ -201,6 +218,51 @@ test('enrolled connector telemetry verifies signatures, enforces freshness and r
   assert.equal(assurance.reportedCoveragePercent, 97.22);
   assert.equal(assurance.assessment, 'reported_coverage_gap');
   assert.equal(assurance.interpretation, 'reported_not_independently_verified');
+
+  const crossSiteAssurance = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/cameras/camera-1/recording-assurance?' +
+      new URLSearchParams({
+        siteId: 'site-2',
+        windowStart: '2026-10-24T00:00:00.000Z',
+        windowEnd: '2026-10-24T01:00:00.000Z'
+      }),
+    { headers: authHeaders() }
+  );
+  assert.equal(crossSiteAssurance.status, 403);
+  assert.equal((await crossSiteAssurance.json()).error, 'forbidden');
+
+  const crossTenantAssurance = await fetch(
+    baseUrl + '/api/v1/organizations/org-2/cameras/camera-1/recording-assurance?' +
+      new URLSearchParams({
+        siteId: 'site-1',
+        windowStart: '2026-10-24T00:00:00.000Z',
+        windowEnd: '2026-10-24T01:00:00.000Z'
+      }),
+    { headers: authHeaders() }
+  );
+  assert.equal(crossTenantAssurance.status, 403);
+  assert.equal((await crossTenantAssurance.json()).error, 'forbidden');
+
+  const missingCameraAssurance = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/cameras/missing-camera/recording-assurance?' +
+      assuranceQuery,
+    { headers: authHeaders() }
+  );
+  assert.equal(missingCameraAssurance.status, 404);
+  assert.equal((await missingCameraAssurance.json()).error, 'camera_not_found');
+
+  const futureAssuranceWindow = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/cameras/camera-1/recording-assurance?' +
+      new URLSearchParams({
+        siteId: 'site-1',
+        windowStart: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        windowEnd: new Date(Date.now() + 20 * 60 * 1000).toISOString()
+      }),
+    { headers: authHeaders() }
+  );
+  assert.equal(futureAssuranceWindow.status, 400);
+  assert.equal((await futureAssuranceWindow.json()).error, 'invalid_recording_assurance_query');
+
   const invalidAssuranceWindow = await fetch(
     baseUrl + '/api/v1/organizations/org-1/cameras/camera-1/recording-assurance?siteId=site-1&windowStart=bad&windowEnd=bad',
     { headers: authHeaders() }

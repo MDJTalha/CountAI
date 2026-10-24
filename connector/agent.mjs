@@ -1,8 +1,9 @@
-import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
+import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalizeConnectorTelemetry } from '../server/spais/connectorTelemetry.mjs';
+import { acknowledgeTelemetry, enqueueTelemetry, getTelemetryQueueStatus, readTelemetryQueue } from './offlineQueue.mjs';
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_RECORDER_RESPONSE_BYTES = 64 * 1024;
@@ -76,7 +77,7 @@ export function createEnrollmentProof({ enrollmentId, challenge, privateKey }) {
 }
 
 export function createSignedTelemetry({
-  organizationId, siteId, connectorId, eventType, payload, privateKey, now = new Date()
+  organizationId, siteId, connectorId, eventType, payload, privateKey, now = new Date(), deliveryId = randomUUID()
 }) {
   if (![organizationId, siteId, connectorId].every(value => ID_PATTERN.test(value || ''))) {
     throw connectorError('invalid_connector_scope');
@@ -88,6 +89,7 @@ export function createSignedTelemetry({
     organizationId, siteId, connectorId,
     timestamp: now.toISOString(),
     nonce: randomBytes(24).toString('base64url'),
+    deliveryId,
     eventType, payload
   };
   message.signature = sign('RSA-SHA256', canonicalizeConnectorTelemetry(message), key).toString('base64url');
@@ -163,6 +165,29 @@ async function readRecorderSnapshot({ url, bearerToken, allowHttp, fetchImpl, ti
   return { cameraHealth, recordingCoverage };
 }
 
+async function drainTelemetryQueue(config, privateKey, fetchImpl, now, results) {
+  let queue = await readTelemetryQueue(config.queuePath);
+  let deliveryError = null;
+  while (queue.length) {
+    const entry = queue[0];
+    const message = createSignedTelemetry({
+      organizationId: config.organizationId, siteId: config.siteId,
+      connectorId: config.connectorId, eventType: entry.eventType,
+      payload: entry.payload, privateKey, now: now(), deliveryId: entry.deliveryId
+    });
+    try {
+      const response = await postJson(fetchImpl, config._telemetryUrl, message, config._timeoutMs);
+      results.push({ eventType: entry.eventType, accepted: true, duplicate: response.receipt?.duplicate === true,
+        receiptId: response.receipt?.telemetryId ?? null, deliveryId: entry.deliveryId });
+      queue = await acknowledgeTelemetry(config.queuePath, entry.deliveryId);
+    } catch (error) {
+      deliveryError = error.code || 'connector_delivery_failed';
+      break;
+    }
+  }
+  return { queuedCount: queue.length, deliveryError };
+}
+
 export async function runConnectorOnce(config, { fetchImpl = fetch, now = () => new Date() } = {}) {
   const serverUrl = validateUrl(config.serverUrl, {
     allowHttp: config.allowInsecureServerHttp === true,
@@ -177,17 +202,25 @@ export async function runConnectorOnce(config, { fetchImpl = fetch, now = () => 
   const timeoutMs = Number.isInteger(config.timeoutMs) ? Math.max(1000, Math.min(15000, config.timeoutMs)) : 5000;
   const telemetryUrl = serverUrl + '/api/v1/connectors/' + encodeURIComponent(config.connectorId) + '/telemetry';
   const results = [];
+  const queuePath = typeof config.queuePath === 'string' && config.queuePath.trim() ? config.queuePath : null;
 
   const send = async (eventType, payload) => {
+    if (queuePath) {
+      await enqueueTelemetry(queuePath, [{ eventType, payload }], now());
+      return drainTelemetryQueue({
+        ...config, queuePath, _telemetryUrl: telemetryUrl, _timeoutMs: timeoutMs
+      }, privateKey, fetchImpl, now, results);
+    }
     const message = createSignedTelemetry({
       organizationId: config.organizationId, siteId: config.siteId,
       connectorId: config.connectorId, eventType, payload, privateKey, now: now()
     });
     const response = await postJson(fetchImpl, telemetryUrl, message, timeoutMs);
     results.push({ eventType, accepted: true, receiptId: response.receipt?.telemetryId ?? null });
+    return { queuedCount: 0, deliveryError: null };
   };
 
-  await send('connector.heartbeat', {
+  let lastDelivery = await send('connector.heartbeat', {
     status: 'healthy',
     ...(typeof config.version === 'string' ? { version: config.version.slice(0, 64) } : {})
   });
@@ -199,10 +232,18 @@ export async function runConnectorOnce(config, { fetchImpl = fetch, now = () => 
       allowHttp: config.allowInsecureRecorderHttp === true,
       fetchImpl, timeoutMs
     });
-    for (const payload of snapshot.cameraHealth) await send('camera.health', payload);
-    for (const payload of snapshot.recordingCoverage) await send('recorder.recording_coverage', payload);
+    for (const payload of snapshot.cameraHealth) lastDelivery = await send('camera.health', payload);
+    for (const payload of snapshot.recordingCoverage) lastDelivery = await send('recorder.recording_coverage', payload);
   }
-  return { acceptedCount: results.length, results, observedAt: now().toISOString() };
+
+  const queueStatus = queuePath ? await getTelemetryQueueStatus(queuePath, now()) : null;
+  const deliveryError = queuePath ? (lastDelivery.deliveryError || null) : null;
+  return {
+    acceptedCount: results.length,
+    results,
+    observedAt: now().toISOString(),
+    ...(queueStatus ? { ...queueStatus, deliveryError, deliveryMode: 'durable-at-least-once' } : {})
+  };
 }
 
 function readConfigFromEnvironment() {
@@ -217,6 +258,7 @@ function readConfigFromEnvironment() {
     siteId: required('SPAIS_SITE_ID'),
     connectorId: required('SPAIS_CONNECTOR_ID'),
     privateKeyPath: required('SPAIS_CONNECTOR_PRIVATE_KEY_PATH'),
+    queuePath: process.env.SPAIS_CONNECTOR_QUEUE_PATH || (required('SPAIS_CONNECTOR_PRIVATE_KEY_PATH') + '.queue.json'),
     recorderStatusUrl: process.env.SPAIS_RECORDER_STATUS_URL,
     recorderBearerToken: process.env.SPAIS_RECORDER_BEARER_TOKEN,
     allowInsecureServerHttp: process.env.SPAIS_ALLOW_INSECURE_SERVER_HTTP === 'true',
@@ -265,7 +307,7 @@ async function main() {
   while (!stopping) {
     try {
       const result = await runConnectorOnce({ ...config, privateKey });
-      process.stdout.write(JSON.stringify({ acceptedCount: result.acceptedCount, observedAt: result.observedAt }) + '\n');
+      process.stdout.write(JSON.stringify({ acceptedCount: result.acceptedCount, queuedCount: result.queuedCount ?? 0, queuedBytes: result.queuedBytes ?? 0, oldestQueuedAgeSeconds: result.oldestQueuedAgeSeconds ?? 0, deliveryError: result.deliveryError ?? null, deliveryMode: result.deliveryMode || 'direct', observedAt: result.observedAt }) + '\n');
     } catch (error) {
       // Never print tokens, payloads, private-key material, or full URLs that may contain credentials.
       process.stderr.write(JSON.stringify({ error: error.code || 'connector_run_failed' }) + '\n');

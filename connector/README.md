@@ -37,6 +37,7 @@ Required environment:
 - `SPAIS_SERVER_URL` — HTTPS SPAIS API URL.
 - `SPAIS_ORGANIZATION_ID`, `SPAIS_SITE_ID`, and `SPAIS_CONNECTOR_ID`.
 - `SPAIS_CONNECTOR_PRIVATE_KEY_PATH`.
+- `SPAIS_CONNECTOR_QUEUE_PATH` — optional path for the durable metadata-only delivery queue. Defaults to `<private-key-path>.queue.json`; protect it with the same host-level access controls as the private key.
 
 Optional environment:
 - `SPAIS_CONNECTOR_POLL_SECONDS` — 15–300 seconds (default 30).
@@ -71,4 +72,7 @@ Each poll is limited to 32 camera-health reports and 32 recording-coverage repor
 - Configure outbound firewall access only to the approved SPAIS API and the specific customer-approved recorder status endpoint.
 - Protect the private key with OS-level access controls and backups; do not commit it to source control.
 - Use a secret manager or service environment for recorder credentials; never put secrets in endpoint query strings.
-- If connectivity is blocked, this pilot agent reports errors to stderr and retries on the next poll. Durable offline store-and-forward is not implemented yet.
+- Signed metadata events are written to a local atomic queue before delivery when queueing is enabled (the continuous CLI enables it by default). The queue is capped at 1,000 entries and 2 MiB, rejects symlink/non-regular queue files, and attempts restrictive file permissions. It contains event metadata only, never video, images, credentials, or private keys.
+- Delivery uses a stable `deliveryId` with a fresh signed timestamp and nonce on each attempt. The server stores a scoped idempotency receipt so an accepted event whose response was lost does not create a second telemetry record on retry.
+- The queue is at-least-once transport with server-side deduplication. Connector output includes queue depth, serialized bytes, and oldest-item age without printing queued payloads. Authentication/schema errors remain queued and can block newer items until configuration is corrected; queue-capacity exhaustion fails closed rather than silently dropping older reports.
+- A crash after the server accepts an event but before the queue file is updated is handled by the stable delivery ID. This is still pilot-grade local persistence: disk failure, host loss, backups, monitoring, and customer lab validation require operational procedures.

@@ -32,3 +32,6 @@ coverage/
 
 .DS_Store
 Thumbs.db
+
+# Customer-local connector telemetry queue
+*.queue.json

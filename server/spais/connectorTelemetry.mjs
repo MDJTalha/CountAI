@@ -89,7 +89,13 @@ export function canonicalizeConnectorTelemetry(message) {
     canonicalJson(message.payload)
   ];
   if (fields.some(value => typeof value !== 'string')) throw fail('invalid_telemetry_envelope');
-  return Buffer.from('spais-connector-telemetry-v1\n' + fields.join('\n'), 'utf8');
+  if (message.deliveryId === undefined) {
+    return Buffer.from('spais-connector-telemetry-v1\n' + fields.join('\n'), 'utf8');
+  }
+  if (typeof message.deliveryId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(message.deliveryId)) {
+    throw fail('invalid_telemetry_envelope');
+  }
+  return Buffer.from('spais-connector-telemetry-v2\n' + fields.concat(message.deliveryId).join('\n'), 'utf8');
 }
 
 export function createConnectorTelemetryReceiver({
@@ -116,6 +122,8 @@ export function createConnectorTelemetryReceiver({
           CREATE TABLE IF NOT EXISTS spais_connector_telemetry (
             sequence INTEGER PRIMARY KEY AUTOINCREMENT,
             telemetry_id TEXT NOT NULL UNIQUE,
+            delivery_id TEXT,
+            payload_digest TEXT NOT NULL DEFAULT '',
             organization_id TEXT NOT NULL,
             site_id TEXT NOT NULL,
             connector_id TEXT NOT NULL,
@@ -139,6 +147,14 @@ export function createConnectorTelemetryReceiver({
           CREATE INDEX IF NOT EXISTS idx_spais_connector_telemetry_nonces_expiry
             ON spais_connector_telemetry_nonces (expires_at);
         `);
+        const telemetryColumns = new Set(db.prepare('PRAGMA table_info(spais_connector_telemetry)').all().map(row => row.name));
+        if (!telemetryColumns.has('delivery_id')) db.exec('ALTER TABLE spais_connector_telemetry ADD COLUMN delivery_id TEXT;');
+        if (!telemetryColumns.has('payload_digest')) db.exec("ALTER TABLE spais_connector_telemetry ADD COLUMN payload_digest TEXT NOT NULL DEFAULT '';");
+        db.exec(`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_spais_telemetry_delivery_id
+            ON spais_connector_telemetry (organization_id, site_id, connector_id, delivery_id)
+            WHERE delivery_id IS NOT NULL;
+        `);
         return db;
       })().catch(error => { databasePromise = undefined; throw error; });
     }
@@ -153,7 +169,8 @@ export function createConnectorTelemetryReceiver({
       if (!isResourceId(organizationId) || !isResourceId(siteId) || !isResourceId(connectorId) ||
           typeof timestamp !== 'string' || !Number.isFinite(Date.parse(timestamp)) ||
           !NONCE_PATTERN.test(nonce || '') || !EVENT_TYPES.has(eventType) ||
-          typeof signature !== 'string' || !SIGNATURE_PATTERN.test(signature)) {
+          typeof signature !== 'string' || !SIGNATURE_PATTERN.test(signature) ||
+          (message.deliveryId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(message.deliveryId))) {
         throw fail('invalid_telemetry_envelope');
       }
       const signedAt = Date.parse(timestamp);
@@ -181,6 +198,9 @@ export function createConnectorTelemetryReceiver({
       const receivedAt = now().toISOString();
       const nonceExpiresAt = new Date(signedAt + maxClockSkewSeconds * 1000).toISOString();
       const telemetryId = randomUUID();
+      const payloadDigest = createHash('sha256').update(canonicalJson({
+        organizationId, siteId, connectorId, eventType, payload
+      })).digest('hex');
       db.exec('BEGIN IMMEDIATE;');
       try {
         // Signed timestamps are accepted only inside the clock-skew window, so expired
@@ -191,12 +211,32 @@ export function createConnectorTelemetryReceiver({
             (organization_id, site_id, connector_id, nonce, expires_at)
           VALUES (?, ?, ?, ?, ?)
         `).run(organizationId, siteId, connectorId, nonce, nonceExpiresAt);
+        if (message.deliveryId) {
+          const existing = db.prepare(`
+            SELECT telemetry_id, payload_digest, received_at, signed_timestamp
+            FROM spais_connector_telemetry
+            WHERE organization_id = ? AND site_id = ? AND connector_id = ? AND delivery_id = ?
+          `).get(organizationId, siteId, connectorId, message.deliveryId);
+          if (existing) {
+            if (existing.payload_digest !== payloadDigest) throw fail('telemetry_delivery_id_conflict');
+            db.exec('COMMIT;');
+            return {
+              telemetryId: existing.telemetry_id, organizationId, siteId, connectorId, eventType,
+              receivedAt: existing.received_at, signedAt: existing.signed_timestamp,
+              trustLevel: 'connector-signed-report', duplicate: true,
+              interpretation: eventType === 'recorder.recording_coverage'
+                ? 'reported_not_independently_verified'
+                : 'signed_connector_report'
+            };
+          }
+        }
         db.prepare(`
           INSERT INTO spais_connector_telemetry
-            (telemetry_id, organization_id, site_id, connector_id, nonce, signed_timestamp,
-             event_type, payload_json, received_at, trust_level)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'connector-signed-report')
-        `).run(telemetryId, organizationId, siteId, connectorId, nonce, timestamp, eventType, payloadJson, receivedAt);
+            (telemetry_id, delivery_id, payload_digest, organization_id, site_id, connector_id,
+             nonce, signed_timestamp, event_type, payload_json, received_at, trust_level)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'connector-signed-report')
+        `).run(telemetryId, message.deliveryId ?? null, payloadDigest, organizationId, siteId, connectorId,
+          nonce, timestamp, eventType, payloadJson, receivedAt);
         db.exec('COMMIT;');
       } catch (error) {
         try { db.exec('ROLLBACK;'); } catch {}

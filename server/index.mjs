@@ -153,7 +153,7 @@ const server = createServer(async (req, res) => {
       return json(res, status, { error: error.code || 'invalid_request_body' });
     }
     const allowedFields = new Set([
-      'organizationId', 'siteId', 'connectorId', 'timestamp', 'nonce', 'eventType', 'payload', 'signature'
+      'organizationId', 'siteId', 'connectorId', 'timestamp', 'nonce', 'deliveryId', 'eventType', 'payload', 'signature'
     ]);
     if (!input || typeof input !== 'object' || Array.isArray(input) ||
         Object.keys(input).some(key => !allowedFields.has(key)) || input.connectorId !== connectorId) {
@@ -171,6 +171,7 @@ const server = createServer(async (req, res) => {
       if (error.code === 'telemetry_camera_scope_mismatch') return json(res, 403, { error: error.code });
       if (error.code === 'invalid_telemetry_signature') return json(res, 401, { error: error.code });
       if (error.code === 'telemetry_replay_detected') return json(res, 409, { error: error.code });
+      if (error.code === 'telemetry_delivery_id_conflict') return json(res, 409, { error: error.code });
       console.error('SPAIS connector telemetry failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'connector_telemetry_failed' });
     }
