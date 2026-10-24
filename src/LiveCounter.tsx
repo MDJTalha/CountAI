@@ -19,8 +19,22 @@ import {
 } from './engine/cameraHealthHistory.mjs';
 import type { CameraHealthEvent } from './engine/cameraHealthHistory.mjs';
 import { formatDetectionOverlayLabel } from './engine/detectionOverlay.mjs';
+import { startLiveSession, recordLiveSessionEvent, finishLiveSession, listLiveSessions, deleteLiveSession } from './storage/liveSessions.mjs';
+import type { LiveSessionRecord } from './storage/liveSessions.mjs';
 
 type TrackerState = ReturnType<typeof createTracker>;
+
+function readSavedLiveSessions(): LiveSessionRecord[] {
+  try {
+    return listLiveSessions(window.localStorage);
+  } catch {
+    return [];
+  }
+}
+
+function readableStopReason(reason: string | null): string {
+  return (reason || 'unknown').replaceAll('_', ' ');
+}
 
 // Lazy-load the heavy TensorFlow/COCO-SSD module on first use.
 let detectorPromise: Promise<import('./engine/localDetector').CocoSsdDetector> | null = null;
@@ -77,6 +91,8 @@ export function LiveCounter() {
   const [healthHistory, setHealthHistory] = useState<CameraHealthEvent[]>(readSavedCameraHealthHistory);
   const healthHistoryRef = useRef(healthHistory);
   const lastHealthEventKeyRef = useRef('idle|');
+  const liveSessionIdRef = useRef<string | null>(null);
+  const [savedLiveSessions, setSavedLiveSessions] = useState<LiveSessionRecord[]>(readSavedLiveSessions);
 
   const [active, setActive] = useState(false);
   const [showDiagnosticConfidence, setShowDiagnosticConfidence] = useState(false);
@@ -185,6 +201,45 @@ export function LiveCounter() {
     }
   }
 
+  function refreshLiveSessions() {
+    try {
+      setSavedLiveSessions(listLiveSessions(window.localStorage));
+    } catch {
+      // Live counting remains usable if browser storage is unavailable.
+    }
+  }
+
+  function persistLiveEvent(type: string, payload: Record<string, unknown>) {
+    const sessionId = liveSessionIdRef.current;
+    if (!sessionId) return;
+    try {
+      recordLiveSessionEvent(window.localStorage, sessionId, type, payload);
+    } catch {
+      // Storage failures must not stop live inference or counting.
+    }
+  }
+
+  function closeLiveSession(reason: string) {
+    const sessionId = liveSessionIdRef.current;
+    if (!sessionId) return;
+    // Clear first so cleanup/watchdog paths cannot close the same session twice.
+    liveSessionIdRef.current = null;
+    try {
+      finishLiveSession(window.localStorage, sessionId, {
+        reason,
+        actualResolution,
+        linePosition,
+        detectionMode: modeRef.current,
+        totals: { ...countsRef.current },
+        directions: { ...directionsRef.current },
+        totalCrossings: Object.values(countsRef.current).reduce((sum, value) => sum + value, 0)
+      });
+      refreshLiveSessions();
+    } catch {
+      // Keep the camera lifecycle independent from local history availability.
+    }
+  }
+
   function releaseCameraResources() {
     runningRef.current = false;
     cancelAnimationFrame(frameRef.current);
@@ -205,6 +260,7 @@ export function LiveCounter() {
     busyRef.current = false;
     healthRef.current = stopCameraHealth(healthRef.current);
     setHealth(healthRef.current);
+    closeLiveSession('operator_stopped');
     setStatus('Camera stopped. Results remain on screen.');
   }
 
@@ -213,6 +269,7 @@ export function LiveCounter() {
     runningRef.current = false;
     cancelAnimationFrame(frameRef.current);
     streamRef.current?.getTracks().forEach(track => track.stop());
+    closeLiveSession('workspace_closed');
   }, []);
 
   async function changeResolution(value: '720p' | '1080p' | '4k') {
@@ -293,6 +350,19 @@ export function LiveCounter() {
       pausedRef.current = false;
       setPaused(false);
       setActive(true);
+      try {
+        const session = startLiveSession(window.localStorage, {
+          startedAt: new Date().toISOString(),
+          requestedResolution,
+          actualResolution: `${width} x ${height}`,
+          linePosition,
+          detectionMode: modeRef.current
+        });
+        liveSessionIdRef.current = session.id;
+        refreshLiveSessions();
+      } catch {
+        setStatus(current => current + ' Local session history is unavailable in this browser.');
+      }
       setStatus(
         width < requestedWidth || height < requestedHeight
           ? `Camera running at ${width}x${height}. Requested ${requestedWidth}x${requestedHeight} is unavailable from this camera/browser; choose a supported resolution.`
@@ -380,6 +450,7 @@ export function LiveCounter() {
       const nextDirections = { ...directionsRef.current };
 
       for (const event of events) {
+        persistLiveEvent('crossing_counted', { trackId: event.trackId, direction: event.direction, category: event.category });
         nextCounts[event.category] = (nextCounts[event.category] ?? 0) + 1;
 
         if (event.direction === 'A-to-B') {
@@ -417,6 +488,7 @@ export function LiveCounter() {
         error: failure.error ?? 'Unknown inference error'
       });
       setHealth(healthRef.current);
+      closeLiveSession('inference_error');
       releaseCameraResources();
       setError(true);
       setStatus(e instanceof Error ? `Live detection stopped: ${e.message}` : 'Live detection failed.');
@@ -464,6 +536,7 @@ export function LiveCounter() {
         // A live track can still have a frozen video clock. Release it after the
         // watchdog confirms stale frames; slow inference alone must not stop the camera.
         const reason = healthError || 'Camera track ended';
+        closeLiveSession(stalled ? 'camera_stalled' : 'camera_disconnected');
         releaseCameraResources();
         busyRef.current = false;
         healthRef.current = stopCameraHealth(healthRef.current, now, {
@@ -486,6 +559,7 @@ export function LiveCounter() {
     const eventKey = `${health.status}|${health.error ?? ''}`;
     if (eventKey === lastHealthEventKeyRef.current) return;
     lastHealthEventKeyRef.current = eventKey;
+    persistLiveEvent('camera_health_changed', { status: health.status, ...(health.error ? { error: health.error } : {}) });
     const next = appendCameraHealthEvent(healthHistoryRef.current, {
       timestamp: Date.now(),
       status: health.status,
@@ -499,7 +573,17 @@ export function LiveCounter() {
     } catch {
       // Health monitoring must continue if browser storage is blocked.
     }
+    refreshLiveSessions();
   }, [health.status, health.error]);
+
+  function removeSavedLiveSession(sessionId: string) {
+    try {
+      deleteLiveSession(window.localStorage, sessionId);
+      refreshLiveSessions();
+    } catch {
+      setStatus('Could not delete the saved live-session record in this browser.');
+    }
+  }
 
   function clearHealthHistory() {
     healthHistoryRef.current = [];
@@ -686,6 +770,28 @@ export function LiveCounter() {
           )}
           <div style={{ opacity: 0.55, fontSize: 11, marginTop: 7 }}>Up to 12 status transitions are stored in this browser; no video is stored.</div>
         </div>
+      </details>
+
+      <details style={{ marginTop: 10, border: '1px solid #293c43', borderRadius: 10, padding: '12px 14px' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 650, fontSize: 14 }}>Recent live sessions · saved on this device</summary>
+        <p style={{ fontSize: 12, lineHeight: 1.5, opacity: 0.72 }}>Summaries and bounded operational events only; no video frames are stored. This is browser-local history, not recorder-side evidence.</p>
+        {savedLiveSessions.length === 0 ? <span style={{ opacity: 0.65, fontSize: 12 }}>No saved live sessions yet. Start and stop a camera session to create one.</span> : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {savedLiveSessions.slice(0, 5).map(session => {
+              const started = Date.parse(session.startedAt);
+              const ended = session.endedAt ? Date.parse(session.endedAt) : Date.now();
+              const duration = Number.isFinite(started) && Number.isFinite(ended) ? formatElapsedDuration(Math.max(0, ended - started)) : '—';
+              return <div key={session.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, borderTop: '1px solid #293c43', paddingTop: 9 }}>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <strong style={{ display: 'block', fontSize: 12 }}>{new Date(session.startedAt).toLocaleString()}</strong>
+                  <span style={{ opacity: 0.72, fontSize: 11 }}>{session.status === 'running' ? 'Running' : readableStopReason(session.stopReason)} · {duration} · {session.totalCrossings} crossings</span>
+                  <span style={{ display: 'block', opacity: 0.62, fontSize: 10 }}>{session.eventCount} events{session.droppedEventCount ? ` · ${session.droppedEventCount} older events omitted` : ''} · line {session.linePosition ?? '—'}%</span>
+                </div>
+                <button className="outline-button" onClick={() => removeSavedLiveSession(session.id)} aria-label={'Delete live session from ' + session.startedAt} style={{ padding: '5px 8px', fontSize: 11 }}>Delete</button>
+              </div>;
+            })}
+          </div>
+        )}
       </details>
 
       <details style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5, opacity: 0.8 }}>
