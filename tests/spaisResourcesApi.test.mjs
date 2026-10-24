@@ -122,6 +122,20 @@ test('site, camera and connector metadata require verified identity and enforce 
   assert.equal(siteBody.createdBy, 'operator-1');
   assert.equal(siteBody.resourceType, 'site');
 
+  const secondSite = await post('/api/v1/organizations/org-1/sites', {
+    id: 'site-2', name: 'Restricted Branch'
+  }, { sitesByOrganization: { 'org-1': ['site-1', 'site-2'] } });
+  assert.equal(secondSite.status, 201);
+
+  const scopedSites = await fetch(`${baseUrl}/api/v1/organizations/org-1/sites`, { headers: auth() });
+  assert.equal(scopedSites.status, 200);
+  assert.deepEqual((await scopedSites.json()).resources.map(item => item.id), ['site-1']);
+
+  const allowedSite = await fetch(`${baseUrl}/api/v1/organizations/org-1/sites/site-1`, { headers: auth() });
+  assert.equal(allowedSite.status, 200);
+  const forbiddenSite = await fetch(`${baseUrl}/api/v1/organizations/org-1/sites/site-2`, { headers: auth() });
+  assert.equal(forbiddenSite.status, 403);
+
   const camera = await post('/api/v1/organizations/org-1/cameras', {
     id: 'camera-1', siteId: 'site-1', name: 'Lobby Camera', metadata: { manufacturer: 'Example', protocol: 'onvif' }
   });
