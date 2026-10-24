@@ -11,6 +11,7 @@ const FILE_TYPES = new Map([
   ['text/markdown', { ext: '.md', kind: 'document' }],
   ['text/csv', { ext: '.csv', kind: 'document' }],
   ['application/json', { ext: '.json', kind: 'document' }],
+  ['application/pdf', { ext: '.pdf', kind: 'document' }],
   ['image/jpeg', { ext: '.jpg', kind: 'image' }],
   ['image/png', { ext: '.png', kind: 'image' }],
   ['image/webp', { ext: '.webp', kind: 'image' }],
@@ -132,7 +133,8 @@ export function createSqliteLearningSourceStore({
           throw fail('invalid_or_oversized_file_payload');
         }
         // Check signatures rather than trusting the browser-provided MIME label.
-        const signatureOkay = input.mimeType === 'image/jpeg' ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+        const signatureOkay = input.mimeType === 'application/pdf' ? bytes.toString('ascii', 0, 5) === '%PDF-'
+          : input.mimeType === 'image/jpeg' ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
           : input.mimeType === 'image/png' ? bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
           : input.mimeType === 'image/webp' ? bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP'
           : input.mimeType === 'video/webm' ? bytes.toString('ascii', 0, 4) === '\u001aE\u00df\u00a3'
@@ -159,7 +161,7 @@ export function createSqliteLearningSourceStore({
         `).run(id, organizationId, input.siteId, input.sourceType, input.title.trim(),
           (input.description || '').trim(), contentText, input.fileName || null, input.mimeType || null,
           mediaPath, sha256, byteSize, input.cameraId || null, input.observedAt || createdAt,
-          JSON.stringify(input.labels || []), status, principal.sub, createdAt);
+          JSON.stringify(input.labels || []), status, (principal.subjectId || principal.sub || 'unknown-actor'), createdAt);
       } catch (error) {
         if (mediaPath) { try { const { unlink } = await import('node:fs/promises'); await unlink(mediaPath); } catch {} }
         throw error;
