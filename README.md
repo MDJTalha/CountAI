@@ -1,6 +1,6 @@
-# CountAI by AIVON — hybrid application scaffold
+# SPAIS — Surveillance & Operational Intelligence
 
-React + TypeScript + Vite PWA with a browser-local object detector, a shared counting/tracking core, IndexedDB session storage, and an explicitly unconfigured cloud-recognition adapter.
+This repository evolves the existing CountAI React + TypeScript + Vite PWA into SPAIS. The current application provides browser-local object detection, counting/tracking helpers, IndexedDB photo-session storage, and an explicitly unconfigured cloud-recognition adapter. The wider SPAIS capabilities are being integrated in phases; do not treat planned connector, NVR recording assurance, incident/SOP governance, or governed-learning features as operational until implemented and validated.
 
 ## Current implementation
 - React/TypeScript mobile-first interface; responsive photo upload, camera capture, image annotations, category totals, manual add/edit/delete, CSV and annotated PNG export.

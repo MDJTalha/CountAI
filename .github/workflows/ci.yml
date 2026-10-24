@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for script in test:engine test:analytics test:overlay-labels test:detection-enhancement test:camera-health test:camera-health-history test:pwa-build test:server; do
+          for script in test:engine test:analytics test:overlay-labels test:operational-events test:spais-contracts test:spais-auth test:detection-enhancement test:camera-health test:camera-health-history test:pwa-build test:server; do
             if node -e "process.exit(require('./package.json').scripts?.['${script}'] ? 0 : 1)"; then
               echo "::group::npm run ${script}"
               npm run "${script}"
