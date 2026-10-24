@@ -334,7 +334,8 @@ test('connector enrollment requires one-time RSA proof-of-possession and creates
   });
   assert.equal(replay.status, 409);
 
-  const audit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit`, { headers: auth() });
+  const audit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit?siteId=site-1`, { headers: auth() });
+  assert.equal(audit.status, 200);
   const events = (await audit.json()).events;
   assert.ok(events.some(item => item.action === 'connector.enrollment_challenge_created'));
   assert.ok(events.some(item => item.action === 'connector.enrollment_completed'));
