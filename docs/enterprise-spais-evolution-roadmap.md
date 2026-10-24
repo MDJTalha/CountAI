@@ -172,9 +172,9 @@ This roadmap is incremental. Each phase must deliver a testable, reviewable slic
 | Work item | Status | Evidence / next gate |
 |---|---|---|
 | Phase 0: baseline and roadmap | In progress | Roadmap PR #16; local workstation pull and browser re-validation still require the user's machine |
-| Phase 1A: versioned event contract | Implemented on feature branch; CI passed | [PR #17](https://github.com/MDJTalha/CountAI/pull/17); six focused contract tests pass in the stacked Phase 1B CI run |
-| Phase 1B: local live-session summaries | Implemented on feature branch; CI passed | [PR #18](https://github.com/MDJTalha/CountAI/pull/18); bounded local storage, session/crossing/health events, recent-session UI, delete control, and five storage tests |
-| Phase 1C: CI coverage for new suites | Added and verified | [Successful CI run](https://github.com/MDJTalha/CountAI/actions/runs/40058392307) explicitly executes `test:operational-events` (6 passing) and `test:live-sessions` (5 passing) |
+| Phase 1A: versioned event contract | Merged to main | [PR #17](https://github.com/MDJTalha/CountAI/pull/17); CI passed on the exact merged head |
+| Phase 1B: local live-session summaries | Implemented; awaiting main integration | [PR #19](https://github.com/MDJTalha/CountAI/pull/19); bounded local storage, session/crossing/health/reset events, recent-session UI, delete control, and six storage tests |
+| Phase 1C: CI coverage for new suites | Added and verified | [Successful main-targeted CI run](https://github.com/MDJTalha/CountAI/actions/runs/40058761033) explicitly executes `test:operational-events` (7 passing) and `test:live-sessions` (6 passing) |
 | Phase 2: enterprise security contracts | Not started | Begin after Phase 1 PRs are reviewed and the baseline is synchronized |
 | Phases 3–7 | Not started | Connector, recorder evidence, incident lifecycle, SOP governance, learner and pilot remain gated |
 
