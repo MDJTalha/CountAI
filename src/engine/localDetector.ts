@@ -15,6 +15,10 @@ export class CocoSsdDetector implements ModelDetector {
 
   private async detectSource(image: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement, minScore = 0.25): Promise<Detection[]> {
     if (!this.model) await this.load();
+    // Keep a narrowed, stable model reference after asynchronous loading so
+    // strict TypeScript checks cannot treat the model as null.
+    const model = this.model;
+    if (!model) throw new Error('The local detector did not finish loading. Please retry.');
 
     const sourceWidth = image instanceof HTMLVideoElement ? image.videoWidth :
       image instanceof HTMLImageElement ? image.naturalWidth : image.width;
@@ -39,7 +43,7 @@ export class CocoSsdDetector implements ModelDetector {
       input = canvas;
     }
 
-    const predictions = await this.model.detect(input, 40, minScore);
+    const predictions = await model.detect(input, 40, minScore);
     const scaleX = sourceWidth / inferenceSize.width;
     const scaleY = sourceHeight / inferenceSize.height;
     return predictions.map(p => ({
