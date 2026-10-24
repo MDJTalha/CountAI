@@ -37,10 +37,38 @@ export function App() {
   const [showPhotoDiagnosticConfidence, setShowPhotoDiagnosticConfidence] = useState(false);
   const [sessions, setSessions] = useState<CountSession[]>([]), [cameraOpen, setCameraOpen] = useState(false), [stream, setStream] = useState<MediaStream | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null), [editCategory, setEditCategory] = useState('object'), [editConfidence, setEditConfidence] = useState('');
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const editModalRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const totals = totalsByCategory(detections);
   useEffect(() => { listSessions().then(setSessions).catch(() => setMessage('Local history is unavailable in this browser.')); }, []);
   useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); stream?.getTracks().forEach(t => t.stop()); }, [imageUrl, stream]);
   useEffect(() => { draw(); }, [image, detections, showPhotoDiagnosticConfidence]);
+  useEffect(() => {
+    if (!editModalOpen) {
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
+      return;
+    }
+    const modal = editModalRef.current;
+    const focusable = () => Array.from(modal?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? []);
+    focusable()[0]?.focus();
+    function handleModalKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setEditModalOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) { event.preventDefault(); return; }
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+    document.addEventListener('keydown', handleModalKeyDown);
+    return () => document.removeEventListener('keydown', handleModalKeyDown);
+  }, [editModalOpen]);
   useEffect(() => { if (cameraOpen && stream && cameraRef.current) { cameraRef.current.srcObject = stream; cameraRef.current.play().catch(() => notify('Camera preview could not start. Check browser permissions.', true)); } }, [cameraOpen, stream]);
   function notify(text: string, isError = false) { setMessage(text); setError(isError); }
   function loadFile(file?: File) {
@@ -91,14 +119,19 @@ export function App() {
     const session: CountSession = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), title: filename || 'Counting session', mode: 'photo', target: target || 'all objects', detections: list, totals: totalsByCategory(list) };
     try { await saveSession(session); setSessions(await listSessions()); } catch { notify('Results are ready, but the browser could not save this session.'); }
   }
-  function addManual() { setEditingId(null); setEditCategory(target.trim() || 'object'); setEditConfidence(''); document.getElementById('edit-modal')?.classList.remove('hidden'); }
-  function editDetection(d: Detection) { setEditingId(d.id); setEditCategory(d.category); setEditConfidence(d.confidence == null ? '' : String(d.confidence)); document.getElementById('edit-modal')?.classList.remove('hidden'); }
+  function openEditModal() {
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setEditModalOpen(true);
+  }
+  function closeEditModal() { setEditModalOpen(false); }
+  function addManual() { setEditingId(null); setEditCategory(target.trim() || 'object'); setEditConfidence(''); openEditModal(); }
+  function editDetection(d: Detection) { setEditingId(d.id); setEditCategory(d.category); setEditConfidence(d.confidence == null ? '' : String(d.confidence)); openEditModal(); }
   async function saveEdit() {
     if (!editCategory.trim()) return;
     let updated: Detection[];
     if (editingId) updated = detections.map(d => d.id === editingId ? { ...d, category: editCategory.trim().slice(0,100), confidence: editConfidence === '' ? undefined : Math.max(0, Math.min(1, Number(editConfidence))), source: 'manual' as const } : d);
     else updated = [...detections, { id: crypto.randomUUID(), category: editCategory.trim().slice(0,100), bbox: [image ? image.naturalWidth * .3 : 0, image ? image.naturalHeight * .3 : 0, image ? image.naturalWidth * .4 : 0, image ? image.naturalHeight * .4 : 0] as [number,number,number,number], source: 'manual' }];
-    setDetections(updated); document.getElementById('edit-modal')?.classList.add('hidden'); await persist(updated); notify('Correction saved. Category totals have been recalculated.');
+    setDetections(updated); closeEditModal(); await persist(updated); notify('Correction saved. Category totals have been recalculated.');
   }
   async function removeDetection(id: string) { const next = detections.filter(d => d.id !== id); setDetections(next); await persist(next); notify('Detection removed and totals recalculated.'); }
   async function startCamera() {
@@ -159,6 +192,6 @@ export function App() {
     <SpaisGovernanceWorkspace visible={activeWorkspace === 'governance'} />
     <SpaisOperationsWorkspace visible={activeWorkspace === 'operations'} />
     <footer><div className="footer-brand">SPAIS <span>INTELLIGENT OPERATIONS</span></div><p>SPAIS · Surveillance and operational intelligence, with human oversight.</p><small>Photos are processed locally by default. This build does not identify people or perform biometric matching.</small></footer>
-    <div id="edit-modal" className="modal hidden" role="dialog" aria-modal="true" aria-labelledby="edit-heading"><div className="modal-card"><div className="modal-head"><h2 id="edit-heading">Correct detection</h2><button className="icon-button" onClick={()=>document.getElementById('edit-modal')?.classList.add('hidden')} aria-label="Close"><X size={18}/></button></div><label className="field-label" htmlFor="edit-category">CATEGORY</label><input id="edit-category" value={editCategory} onChange={e=>setEditCategory(e.target.value)} maxLength={100}/><label className="field-label" htmlFor="edit-confidence">CONFIDENCE (0â€“1, OPTIONAL)</label><input id="edit-confidence" type="number" min="0" max="1" step="0.01" value={editConfidence} onChange={e=>setEditConfidence(e.target.value)}/><div className="modal-actions"><button className="outline-button" onClick={()=>document.getElementById('edit-modal')?.classList.add('hidden')}>Cancel</button><button className="primary-button" onClick={saveEdit}><Check size={16}/> Save correction</button></div></div></div>
+    <div id="edit-modal" ref={editModalRef} className={editModalOpen ? 'modal' : 'modal hidden'} role="dialog" aria-modal="true" aria-labelledby="edit-heading"><div className="modal-card"><div className="modal-head"><h2 id="edit-heading">Correct detection</h2><button className="icon-button" onClick={closeEditModal} aria-label="Close"><X size={18}/></button></div><label className="field-label" htmlFor="edit-category">CATEGORY</label><input id="edit-category" value={editCategory} onChange={e=>setEditCategory(e.target.value)} maxLength={100}/><label className="field-label" htmlFor="edit-confidence">CONFIDENCE (0â€“1, OPTIONAL)</label><input id="edit-confidence" type="number" min="0" max="1" step="0.01" value={editConfidence} onChange={e=>setEditConfidence(e.target.value)}/><div className="modal-actions"><button className="outline-button" onClick={closeEditModal}>Cancel</button><button className="primary-button" onClick={saveEdit}><Check size={16}/> Save correction</button></div></div></div>
   </main>;
 }
