@@ -28,7 +28,9 @@ test('SQLite backup creates a consistent, integrity-checked, private snapshot', 
     assert.deepEqual(backup.prepare('SELECT action FROM audit_events').get(), { action: 'test.event' });
     backup.close();
     const info = await stat(result.backupPath);
-    assert.ok((info.mode & 0o077) === 0, 'backup file must not be accessible to group/other users');
+    if (process.platform !== 'win32') {
+      assert.ok((info.mode & 0o077) === 0, 'backup file must not be accessible to group/other users');
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
