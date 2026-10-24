@@ -28,7 +28,7 @@ function validateClaims(claims, { issuer, audience, nowSeconds }) {
   if (claims.nbf !== undefined && (!Number.isInteger(claims.nbf) || claims.nbf > nowSeconds)) return deny('token_not_yet_valid');
   if (typeof claims.sub !== 'string' || !ID_PATTERN.test(claims.sub)) return deny('subject_required');
   if (!Array.isArray(claims.organizationIds) || !Array.isArray(claims.permissions)) return deny('tenant_claims_required');
-  if (claims.organizationIds.some(id => !ID_PATTERN.test(id)) ||
+  if (claims.organizationIds.some(id => typeof id !== 'string' || !ID_PATTERN.test(id)) ||
       new Set(claims.organizationIds).size !== claims.organizationIds.length) return deny('invalid_organization_claim');
   if (claims.permissions.some(permission => typeof permission !== 'string' || !permission.trim()) ||
       new Set(claims.permissions).size !== claims.permissions.length) return deny('invalid_permission_claim');
