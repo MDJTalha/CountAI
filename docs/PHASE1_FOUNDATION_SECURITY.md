@@ -4,7 +4,7 @@ Status: implementation in progress; merge/deployment and customer acceptance are
 
 ## Runtime protections added
 
-- Baseline response headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(self), microphone=(), geolocation=()`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, and `Cache-Control: no-store`.
+- Baseline response headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(self), microphone=(), geolocation=()`, `Cross-Origin-Opener-Policy: same-origin`, and `Cross-Origin-Resource-Policy: same-origin`. API JSON responses use `Cache-Control: no-store`; the HTML entry point and unhashed static assets use `no-cache`, while content-hashed build assets may be cached as immutable.
 - Optional HSTS only when `COUNTAI_ENABLE_HSTS=true`. Enable only after HTTPS is guaranteed at the public edge, including all subdomains covered by the directive.
 - Process-local API rate limits. Defaults are 120 API requests per minute and 30 write requests per minute per socket peer. `/api/health` is exempt so a load balancer can continue probing service health.
 - Rate-limited requests return HTTP 429 with `Retry-After` and rate-limit headers.
@@ -55,7 +55,7 @@ Required policy before production:
 
 - SQLite is a single-host persistence option, not a shared database for horizontally scaled replicas.
 - Set `SPAIS_EVENTS_DB_PATH` to a persistent, access-controlled volume and ensure the process account has only the required permissions.
-- Back up the SQLite database using a consistent SQLite-aware backup procedure; copying an active database file without accounting for WAL state is not a sufficient recovery plan.
+- Use `npm run maintenance:backup-sqlite` with `SPAIS_EVENTS_DB_PATH` and `COUNTAI_BACKUP_DIR` configured to create a consistent SQLite snapshot via `VACUUM INTO`. The command verifies the backup with `PRAGMA integrity_check`, restricts the backup file to the service account by default, and emits a machine-readable result. Schedule it, copy the resulting backup to independently protected storage, and monitor failures; a local backup alone is not disaster recovery. Never copy an active SQLite database file without accounting for WAL state.
 - Define and test RPO/RTO, encryption at rest, backup retention, restore drills, disk-capacity alerts and recovery after interrupted writes before production approval.
 - For multi-instance deployment, use a shared transactional database and a separately designed migration/backup strategy.
 
@@ -79,7 +79,8 @@ The CI pipeline must run all required test suites, including the security-contro
 - [x] Include the new security suites in CI and the default test command.
 - [x] Implement and test authorized site-scoped learning-source deletion and an opt-in retention-expiry maintenance command.\n- [ ] Configure and monitor the scheduled retention task with a customer-approved retention period.
 - [ ] Configure production OIDC, secret rotation/revocation and trusted TLS gateway.
-- [ ] Configure SQLite backup/restore and document verified RPO/RTO, or select a supported shared database.
+- [x] Add a consistent SQLite snapshot command with integrity verification and restrictive file permissions.
+- [ ] Schedule and monitor backups, store a protected off-host copy, run a restore drill, and document verified RPO/RTO; or select a supported shared database.
 - [ ] Run an independent security review and deployment-level load/recovery tests.
 - [ ] Verify all open PRs against current main, merge only after review/CI, then repeat validation on main.
 
