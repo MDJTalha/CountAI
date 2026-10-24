@@ -11,9 +11,8 @@ test('SQLite backup creates a consistent, integrity-checked, private snapshot', 
   const sourcePath = join(dir, 'events.sqlite');
   const backupDirectory = join(dir, 'backups');
   const source = new DatabaseSync(sourcePath);
-  source.exec('CREATE TABLE audit_events (id INTEGER PRIMARY KEY, action TEXT NOT NULL);');
+  source.exec('PRAGMA journal_mode=WAL; CREATE TABLE audit_events (id INTEGER PRIMARY KEY, action TEXT NOT NULL);');
   source.prepare('INSERT INTO audit_events (action) VALUES (?)').run('test.event');
-  source.close();
 
   try {
     const result = await createConsistentSqliteBackup({
@@ -32,6 +31,7 @@ test('SQLite backup creates a consistent, integrity-checked, private snapshot', 
       assert.ok((info.mode & 0o077) === 0, 'backup file must not be accessible to group/other users');
     }
   } finally {
+    source.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
