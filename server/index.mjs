@@ -144,7 +144,7 @@ const server = createServer(async (req, res) => {
 
   // Site, camera and connector metadata use the persistent SQLite registry.
   // Camera and connector operations are always scoped to one authorized site.
-  const resourceRoute = url.pathname.match(/^\\/api\\/v1\\/organizations\\/([^/]+)\\/(sites|cameras|connectors)$/);
+  const resourceRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/(sites|cameras|connectors)$/);
   if (resourceRoute) {
     if (req.method !== 'GET' && req.method !== 'POST') {
       return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET, POST' });
