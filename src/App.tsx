@@ -3,6 +3,7 @@ import { Camera, Check, ChevronRight, CircleHelp, Download, ImagePlus, LoaderCir
 
 import { LiveCounter } from './LiveCounter';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { formatDetectionOverlayLabel } from './engine/detectionOverlay.mjs';
 import { DashboardHome } from './DashboardHome';
 import { totalsByCategory } from './engine/counting';
 import { listSessions, saveSession, deleteSession } from './storage/sessions';
@@ -31,12 +32,13 @@ export function App() {
   const [detections, setDetections] = useState<Detection[]>([]), [target, setTarget] = useState(''), [busy, setBusy] = useState(false), [engine, setEngine] = useState('Not loaded');
   const [message, setMessage] = useState('Choose a photo to begin. Your photo stays in this browser for local detection.'), [error, setError] = useState(false);
   const [enhancedPhotoScan, setEnhancedPhotoScan] = useState(true);
+  const [showPhotoDiagnosticConfidence, setShowPhotoDiagnosticConfidence] = useState(false);
   const [sessions, setSessions] = useState<CountSession[]>([]), [cameraOpen, setCameraOpen] = useState(false), [stream, setStream] = useState<MediaStream | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null), [editCategory, setEditCategory] = useState('object'), [editConfidence, setEditConfidence] = useState('');
   const totals = totalsByCategory(detections);
   useEffect(() => { listSessions().then(setSessions).catch(() => setMessage('Local history is unavailable in this browser.')); }, []);
   useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); stream?.getTracks().forEach(t => t.stop()); }, [imageUrl, stream]);
-  useEffect(() => { draw(); }, [image, detections]);
+  useEffect(() => { draw(); }, [image, detections, showPhotoDiagnosticConfidence]);
   useEffect(() => { if (cameraOpen && stream && cameraRef.current) { cameraRef.current.srcObject = stream; cameraRef.current.play().catch(() => notify('Camera preview could not start. Check browser permissions.', true)); } }, [cameraOpen, stream]);
   function notify(text: string, isError = false) { setMessage(text); setError(isError); }
   function loadFile(file?: File) {
@@ -56,7 +58,10 @@ export function App() {
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     detections.forEach((d, i) => { const [x,y,w,h] = d.bbox.map(v => v * scale); const color = d.source === 'manual' ? '#e6ae52' : '#42cdb1';
       ctx.lineWidth = Math.max(2, canvas.width / 400); ctx.strokeStyle = color; ctx.strokeRect(x,y,w,h);
-      const label = `${i + 1} Â· ${d.category}${d.confidence == null ? '' : ` ${Math.round(d.confidence * 100)}%`}`;
+      const detectionLabel = d.source === 'manual'
+        ? `Manual · ${d.category}`
+        : formatDetectionOverlayLabel(d.category, d.confidence, showPhotoDiagnosticConfidence);
+      const label = `${i + 1} · ${detectionLabel}`;
       ctx.font = `600 ${Math.max(12, Math.min(18, canvas.width / 48))}px system-ui`; const th = 24, tw = Math.min(ctx.measureText(label).width + 14, canvas.width - x);
       ctx.fillStyle = color; ctx.fillRect(x, Math.max(0, y - th), tw, th); ctx.fillStyle = '#102321'; ctx.fillText(label, x + 6, Math.max(16, y - 7), Math.max(20, tw - 8));
     });
@@ -139,7 +144,11 @@ export function App() {
       <div className="review-heading"><h3>Individual detections</h3><button className="small-action" onClick={addManual}><Plus size={15}/> Add manually</button></div>
       {detections.length ? <div className="detection-list">{detections.map((d,i)=><div className="detection-row" key={d.id}><span className="detection-index">{String(i+1).padStart(2,'0')}</span><div className="detection-info"><b>{d.category}</b><small>{d.source === 'manual' ? 'Manual entry' : `${d.source === 'local' ? 'Local model' : 'Cloud model'} Â· ${d.confidence == null ? 'confidence unavailable' : `${Math.round(d.confidence*100)}% confidence`}`}</small></div><button className="icon-button" onClick={()=>editDetection(d)} aria-label={`Edit ${d.category}`}><span>Edit</span></button><button className="icon-button danger" onClick={()=>removeDetection(d.id)} aria-label={`Remove ${d.category}`}><X size={17}/></button></div>)}</div> : <div className="empty-results"><ScanSearch size={25}/><p>No detections yet</p><small>AI results will appear here after analysis.</small></div>}
       <div className="export-row"><button className="outline-button" disabled={!detections.length} onClick={exportCsv}><Download size={16}/> Export CSV</button><button className="outline-button" disabled={!image || !detections.length} onClick={exportPng}><ImagePlus size={16}/> Annotated PNG</button></div>
-      <p className="accuracy-note"><CircleHelp size={16}/> Detection counts can be wrong when items overlap, are small, obscured, or outside the model's supported classes. Review before relying on totals.</p>
+      <p className="accuracy-note"><CircleHelp size={16}/> Labels are AI predictions, not verified facts. Detection counts can be wrong when items overlap, are small, obscured, or outside the model's supported classes. Manual entries are labelled separately; review before relying on totals.</p>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#72817c', cursor: 'pointer' }}>
+        <input type="checkbox" checked={showPhotoDiagnosticConfidence} onChange={event => setShowPhotoDiagnosticConfidence(event.target.checked)} />
+        Show model confidence on annotated photo (diagnostic only)
+      </label>
     </section>
     <section className="history-section" style={{ display: activeWorkspace === 'history' ? undefined : 'none' }}><div className="section-heading"><div><span className="step">03 / ON THIS DEVICE</span><h2>Recent sessions</h2></div><span className="local-badge">IndexedDB</span></div>{sessions.length ? sessions.slice(0,8).map(s=><div className="session-row" key={s.id}><button className="session-open" onClick={()=>openSession(s)}><span><b>{s.title}</b><small>{new Date(s.createdAt).toLocaleString()} Â· {s.target}</small></span><strong>{s.detections.length}<ChevronRight size={16}/></strong></button><button className="icon-button danger" aria-label="Delete session" onClick={()=>eraseSession(s.id)}><Trash2 size={15}/></button></div>) : <p className="empty-copy">Your saved sessions will appear here after you analyze or correct a count.</p>}</section>
     <div style={{ display: activeWorkspace === 'analytics' ? undefined : 'none' }}><AnalyticsDashboard sessions={sessions} onOpenSession={openSession} /></div>
