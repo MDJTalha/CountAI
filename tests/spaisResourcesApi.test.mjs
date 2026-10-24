@@ -210,6 +210,17 @@ test('connector enrollment requires one-time RSA proof-of-possession and creates
   assert.equal(connector.status, 201);
   assert.equal((await connector.json()).resource.status, 'pending');
 
+  // Invalid public keys must be rejected without creating an enrollment.
+  const invalidKeyResponse = await fetch(
+    `${baseUrl}/api/v1/organizations/org-1/connectors/connector-enroll-1/enrollment-challenges?siteId=site-1`,
+    {
+      method: 'POST',
+      headers: { ...auth(), 'content-type': 'application/json' },
+      body: JSON.stringify({ publicKeyJwk: { kty: 'RSA' } })
+    }
+  );
+  assert.equal(invalidKeyResponse.status, 400);
+
   // The connector generates its key pair locally. The operator binds its public key before receiving a challenge.
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const publicKeyJwk = publicKey.export({ format: 'jwk' });
