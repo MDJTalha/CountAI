@@ -11,6 +11,7 @@ import { createSqliteIncidentStore, validateIncidentInput, validateIncidentTrans
 import { createSqliteSopStore, validateSopInput, validateSopTransition } from './spais/sops.mjs';
 import { createSqliteLearningCandidateStore, validateLearningCandidateInput, validateLearningCandidateTransition } from './spais/learningCandidates.mjs';
 import { getTrustedLearningEvaluatorConfig, validateLearningEvaluationReport, verifyLearningEvaluationAttestation } from './spais/learningEvaluations.mjs';
+import { createSqliteLearningSourceStore } from './spais/learningSources.mjs';
 import {
   createOperationalEvent,
   createOperationalEventStore,
@@ -31,6 +32,7 @@ const connectorTelemetryReceiver = createConnectorTelemetryReceiver({
 const incidentStore = createSqliteIncidentStore(process.env.SPAIS_EVENTS_DB_PATH);
 const sopStore = createSqliteSopStore(process.env.SPAIS_EVENTS_DB_PATH);
 const learningCandidateStore = createSqliteLearningCandidateStore(process.env.SPAIS_EVENTS_DB_PATH);
+const learningSourceStore = createSqliteLearningSourceStore({ databasePath: process.env.SPAIS_EVENTS_DB_PATH });
 const spaisAuthConfigured = Boolean(
   (process.env.SPAIS_AUTH_JWKS_URL || process.env.SPAIS_AUTH_HS256_SECRET) &&
   process.env.SPAIS_AUTH_ISSUER && process.env.SPAIS_AUTH_AUDIENCE
@@ -706,6 +708,48 @@ const server = createServer(async (req, res) => {
       if (error.code === 'invalid_learning_evaluation_query') return json(res, 400, { error: error.code });
       console.error('SPAIS learning evaluation request failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'learning_evaluation_request_failed' });
+    }
+  }
+
+  // Learning sources are tenant/site scoped; uploaded media is stored on the customer-controlled host.
+  const learningSourcesRoute = url.pathname.match(/^\\/api\\/v1\\/organizations\\/([^/]+)\\/learning-sources$/);
+  if (learningSourcesRoute) {
+    if (!['GET', 'POST'].includes(req.method)) return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET, POST' });
+    let organizationId;
+    try { organizationId = decodeURIComponent(learningSourcesRoute[1]); }
+    catch { return json(res, 400, { error: 'invalid_resource_id' }); }
+    if (!isResourceId(organizationId)) return json(res, 400, { error: 'invalid_resource_id' });
+    const siteId = url.searchParams.get('siteId') || undefined;
+    if (!isResourceId(siteId)) return json(res, 400, { error: 'site_id_required' });
+    if (!spaisAuthConfigured || !resourceStore.configured || !learningSourceStore.configured) {
+      return json(res, 503, { error: 'learning_sources_not_enabled' });
+    }
+    const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
+    if (!authentication.authenticated) return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
+    const action = req.method === 'GET' ? 'model:read' : 'model:propose';
+    const authorization = authorizeSpaisAction({ principal: authentication.principal, organizationId, siteId, action });
+    if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
+    try {
+      if (req.method === 'GET') {
+        const requestedLimit = Number(url.searchParams.get('limit') || 100);
+        const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 100;
+        const sources = await learningSourceStore.list({ organizationId, siteId, limit });
+        return json(res, 200, { organizationId, siteId, sources, count: sources.length, limit });
+      }
+      let input;
+      try { input = await readJsonBody(req, 12 * 1024 * 1024); }
+      catch (error) {
+        const status = error.code === 'request_body_too_large' ? 413 : 400;
+        return json(res, status, { error: error.code || 'invalid_request_body' });
+      }
+      if (input?.siteId !== siteId) return json(res, 400, { error: 'site_scope_mismatch' });
+      const source = await learningSourceStore.create({ organizationId, principal: authentication.principal, input });
+      return json(res, 201, { source });
+    } catch (error) {
+      if (error.code === 'invalid_learning_source') return json(res, 400, { error: error.code, details: error.validationErrors || [] });
+      if (['invalid_or_oversized_file_payload','file_signature_mismatch'].includes(error.code)) return json(res, 400, { error: error.code });
+      console.error('CountAI learning source request failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'learning_source_request_failed' });
     }
   }
 
