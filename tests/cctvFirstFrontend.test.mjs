@@ -47,5 +47,5 @@ test('documentation describes the CCTV-first product boundary', () => {
   assert.match(readme, /CCTV-first/i);
   assert.match(readme, /RTSP/i);
   assert.match(readme, /Bluetooth/i);
-  assert.match(readme, /not proof of a live feed|not independently verified/i);
+  assert.match(readme, /not proof that footage exists|not independently verified|not proof that a camera is online/i);
 });
