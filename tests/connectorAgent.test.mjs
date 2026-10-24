@@ -201,6 +201,12 @@ test('offline queue rejects secret-bearing metadata, duplicate delivery IDs, cor
       error => error.code === 'connector_queue_not_regular_file'
     );
 
+    await writeFile(queuePath, Buffer.alloc(2 * 1024 * 1024 + 1, 0x78));
+    await assert.rejects(
+      () => readTelemetryQueue(queuePath),
+      error => error.code === 'connector_queue_too_large'
+    );
+
     await writeFile(queuePath, '{invalid-json', 'utf8');
     await assert.rejects(
       () => readTelemetryQueue(queuePath),
