@@ -47,6 +47,9 @@ export async function readTelemetryQueue(path) {
   try {
     const info = await lstat(filePath);
     if (info.isSymbolicLink() || !info.isFile()) throw fail('connector_queue_not_regular_file');
+    // Reject oversized files before allocating their contents; keep the post-read
+    // byte check below as a guard against a file changing between stat and read.
+    if (info.size > MAX_BYTES) throw fail('connector_queue_too_large');
     await chmod(filePath, 0o600).catch(() => {});
     text = await readFile(filePath, 'utf8');
   } catch (error) {
