@@ -66,3 +66,10 @@ test('all primary workspaces are reachable through named, stateful navigation co
   assert.match(app, /setActiveWorkspace\('governance'\)/);
   assert.match(app, /setActiveWorkspace\('operations'\)/);
 });
+
+
+test('camera tracks are not stopped by unrelated photo URL changes', () => {
+  assert.match(app, /useEffect\(\(\) => \(\) => \{ if \(imageUrl\) URL\.revokeObjectURL\(imageUrl\); \}, \[imageUrl\]\)/);
+  assert.match(app, /useEffect\(\(\) => \(\) => \{ stream\?\.getTracks\(\)\.forEach\(t => t\.stop\(\)\); \}, \[stream\]\)/);
+  assert.doesNotMatch(app, /URL\.revokeObjectURL\(imageUrl\); stream\?\.getTracks\(\)\.forEach/);
+});
