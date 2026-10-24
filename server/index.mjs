@@ -143,6 +143,91 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  // Operators create a short-lived challenge for a pending connector at an authorized site.
+  const enrollmentChallengeRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/connectors\/([^/]+)\/enrollment-challenges$/);
+  if (enrollmentChallengeRoute) {
+    if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' }, { allow: 'POST' });
+    let organizationId;
+    let connectorId;
+    try {
+      organizationId = decodeURIComponent(enrollmentChallengeRoute[1]);
+      connectorId = decodeURIComponent(enrollmentChallengeRoute[2]);
+    } catch { return json(res, 400, { error: 'invalid_resource_id' }); }
+    const siteId = url.searchParams.get('siteId') || undefined;
+    if (!isResourceId(organizationId) || !isResourceId(connectorId)) return json(res, 400, { error: 'invalid_resource_id' });
+    if (!isResourceId(siteId)) return json(res, 400, { error: 'site_id_required' });
+    if (!spaisAuthConfigured || !resourceStore.configured) {
+      return json(res, 503, { error: 'tenant_api_not_enabled' });
+    }
+    const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
+    if (!authentication.authenticated) {
+      return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
+    }
+    const authorization = authorizeSpaisAction({
+      principal: authentication.principal, organizationId, siteId, action: 'connector:manage'
+    });
+    if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
+    let input;
+    try { input = await readJsonBody(req, 8 * 1024); }
+    catch (error) {
+      const status = error.code === 'request_body_too_large' ? 413 : 400;
+      return json(res, status, { error: error.code || 'invalid_request_body' });
+    }
+    if (!input || typeof input !== 'object' || Array.isArray(input) ||
+        Object.keys(input).length !== 1 || !Object.hasOwn(input, 'publicKeyJwk')) {
+      return json(res, 400, { error: 'invalid_public_key' });
+    }
+    try {
+      const challenge = await resourceStore.createConnectorEnrollmentChallenge({
+        organizationId, siteId, connectorId, actorId: authentication.principal.subjectId,
+        publicKeyJwk: input.publicKeyJwk
+      });
+      return json(res, 201, { enrollment: challenge });
+    } catch (error) {
+      if (error.code === 'connector_not_enrollable') return json(res, 409, { error: 'connector_not_enrollable' });
+      if (error.code === 'invalid_public_key') return json(res, 400, { error: 'invalid_public_key' });
+      console.error('SPAIS enrollment challenge failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'enrollment_challenge_failed' });
+    }
+  }
+
+  // Connector completes enrollment with proof-of-possession of its own RSA private key.
+  // The challenge is one-time, expires after ten minutes and is stored only as a hash.
+  const enrollmentCompleteRoute = url.pathname.match(/^\/api\/v1\/connector-enrollments\/([^/]+)\/complete$/);
+  if (enrollmentCompleteRoute) {
+    if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' }, { allow: 'POST' });
+    let enrollmentId;
+    try { enrollmentId = decodeURIComponent(enrollmentCompleteRoute[1]); }
+    catch { return json(res, 400, { error: 'invalid_enrollment_id' }); }
+    if (!isResourceId(enrollmentId)) return json(res, 400, { error: 'invalid_enrollment_id' });
+    if (!resourceStore.configured) return json(res, 503, { error: 'tenant_api_not_enabled' });
+    let input;
+    try { input = await readJsonBody(req, 8 * 1024); }
+    catch (error) {
+      const status = error.code === 'request_body_too_large' ? 413 : 400;
+      return json(res, status, { error: error.code || 'invalid_request_body' });
+    }
+    const allowedFields = new Set(['challenge', 'signature']);
+    if (!input || typeof input !== 'object' || Array.isArray(input) ||
+        Object.keys(input).some(key => !allowedFields.has(key)) ||
+        !input.challenge || !input.signature) {
+      return json(res, 400, { error: 'invalid_enrollment_proof' });
+    }
+    try {
+      const enrollment = await resourceStore.completeConnectorEnrollment({ enrollmentId, ...input });
+      return json(res, 200, { enrollment });
+    } catch (error) {
+      if (error.code === 'enrollment_not_found') return json(res, 404, { error: 'enrollment_not_found' });
+      if (error.code === 'enrollment_expired') return json(res, 410, { error: 'enrollment_expired' });
+      if (error.code === 'enrollment_not_pending') return json(res, 409, { error: 'enrollment_not_pending' });
+      if (error.code === 'connector_not_enrollable') return json(res, 409, { error: 'connector_not_enrollable' });
+      if (error.code === 'invalid_enrollment_proof') return json(res, 401, { error: 'invalid_enrollment_proof' });
+      if (error.code === 'invalid_public_key') return json(res, 400, { error: 'invalid_public_key' });
+      console.error('SPAIS enrollment completion failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'enrollment_completion_failed' });
+    }
+  }
+
   // Site, camera and connector metadata use the persistent SQLite registry.
   // Camera/connector operations are site-scoped; their status cannot be set to active by inventory CRUD.
   const resourceRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/(sites|cameras|connectors)(?:\/([^/]+))?$/);
