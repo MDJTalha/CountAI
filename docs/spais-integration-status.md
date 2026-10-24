@@ -43,7 +43,7 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Production identity-provider integration, key rotation and operational secret management.
 - Deployment-specific OIDC identity-provider configuration, identity lifecycle operations, emergency key revocation procedures and operational secret management.
 - Organization CRUD and broader tenant administration workflows beyond the current site/camera/connector metadata registry.
-- Customer-controlled edge connector enrollment and camera/NVR inventory.
+- Connector-signed telemetry/event request verification and public-key revocation/rotation workflows.
 - Recorder-side recording coverage evidence.
 - Incident lifecycle and SOP/policy governance.
 - Governed model candidate evaluation, approval and promotion.
@@ -58,8 +58,9 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 6. Report each capability as planned, implemented, automated-test passed, lab-verified, pilot-accepted or production-approved with evidence.
 
 ## Next implementation gate
-1. Validate the resource lifecycle/audit PR with full CI and review audit transaction and isolation behavior.
+1. Validate the lifecycle/audit and connector proof-of-possession flow with full CI and security review.
 2. Configure a real trusted identity provider in a controlled environment and verify issuer, audience, tenant and permission claim mapping.
-3. Design customer-controlled connector enrollment and recorder-side recording assurance; metadata inventory is not a connected camera.
-4. Add incident/SOP governance and a governed learning lifecycle.
-5. Configure backup/retention/monitoring for single-host SQLite; use a shared transactional database service for multi-instance deployments.
+3. Add signed connector telemetry, revocation/rotation and replay protection before treating connector messages as trusted operational evidence.
+4. Implement customer-controlled camera/NVR connector operation and recorder-side recording assurance; enrollment alone does not prove a camera is connected or recording.
+5. Add incident/SOP governance and a governed learning lifecycle.
+6. Configure backup/retention/monitoring for single-host SQLite; use a shared transactional database service for multi-instance deployments.
