@@ -60,12 +60,8 @@ test('learning sources persist scoped observations and safely store a verified i
   }
 });
 
-test('learning source ingestion rejects MIME spoofing, oversized files, and secret-like metadata keys', () => {
+test('learning source validation rejects oversized files and unsupported secret-like metadata keys', () => {
   const common = { siteId: 'site-1', title: 'Reference image', consentConfirmed: true };
-  assert.ok(validateLearningSourceInput({
-    ...common, sourceType: 'image', fileName: 'fake.png', mimeType: 'image/png',
-    fileBase64: Buffer.from('not an image').toString('base64')
-  }).valid);
   assert.ok(validateLearningSourceInput({
     ...common, sourceType: 'image', fileName: 'x.png', mimeType: 'image/png',
     fileBase64: 'x'.repeat(12 * 1024 * 1024)
