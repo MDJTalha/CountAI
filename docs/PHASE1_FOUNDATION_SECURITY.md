@@ -4,7 +4,7 @@ Status: implementation in progress; merge/deployment and customer acceptance are
 
 ## Runtime protections added
 
-- Baseline response headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(self), microphone=(), geolocation=()`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, and `Cache-Control: no-store`.
+- Baseline response headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(self), microphone=(), geolocation=()`, `Cross-Origin-Opener-Policy: same-origin`, and `Cross-Origin-Resource-Policy: same-origin`. API JSON responses use `Cache-Control: no-store`; the HTML entry point and unhashed static assets use `no-cache`, while content-hashed build assets may be cached as immutable.
 - Optional HSTS only when `COUNTAI_ENABLE_HSTS=true`. Enable only after HTTPS is guaranteed at the public edge, including all subdomains covered by the directive.
 - Process-local API rate limits. Defaults are 120 API requests per minute and 30 write requests per minute per socket peer. `/api/health` is exempt so a load balancer can continue probing service health.
 - Rate-limited requests return HTTP 429 with `Retry-After` and rate-limit headers.
