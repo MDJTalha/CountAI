@@ -40,6 +40,9 @@ export async function createConsistentSqliteBackup({
   try {
     const { DatabaseSync } = await import('node:sqlite');
     sourceDb = new DatabaseSync(sourcePath);
+    // Allow short writer-lock contention while still failing safely if the
+    // database cannot be read consistently within the bounded wait.
+    sourceDb.exec('PRAGMA busy_timeout = 5000');
     // VACUUM INTO writes a transactionally consistent snapshot and includes
     // committed WAL content; never copy an active SQLite database file directly.
     const escapedPath = outputPath.replace(/'/g, "''");
@@ -54,6 +57,10 @@ export async function createConsistentSqliteBackup({
     if (!outputInfo.isFile() || outputInfo.size < 1) throw fail('sqlite_backup_output_invalid');
     return { backupPath: outputPath, bytes: outputInfo.size, integrity: 'ok' };
   } catch (error) {
+    try { backupDb?.close(); } catch {}
+    backupDb = undefined;
+    try { sourceDb?.close(); } catch {}
+    sourceDb = undefined;
     try { await rm(outputPath, { force: true }); } catch {}
     if (error?.code && String(error.code).startsWith('sqlite_backup_')) throw error;
     throw Object.assign(fail('sqlite_backup_failed'), { cause: error });
