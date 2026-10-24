@@ -18,6 +18,7 @@ import {
   saveCameraHealthHistory
 } from './engine/cameraHealthHistory.mjs';
 import type { CameraHealthEvent } from './engine/cameraHealthHistory.mjs';
+import { formatDetectionOverlayLabel } from './engine/detectionOverlay.mjs';
 
 type TrackerState = ReturnType<typeof createTracker>;
 
@@ -78,6 +79,7 @@ export function LiveCounter() {
   const lastHealthEventKeyRef = useRef('idle|');
 
   const [active, setActive] = useState(false);
+  const [showDiagnosticConfidence, setShowDiagnosticConfidence] = useState(false);
   const [paused, setPaused] = useState(false);
   const [detectionMode, setDetectionMode] = useState<'people' | 'all'>('people');
   const [resolution, setResolution] = useState<'720p' | '1080p' | '4k'>('720p');
@@ -104,7 +106,7 @@ export function LiveCounter() {
     enhancementRef.current = enhancement;
     presetRef.current = preset;
     drawFrame(latestDetectionsRef.current);
-  }, [enhancement, preset, linePosition]);
+  }, [enhancement, preset, linePosition, showDiagnosticConfidence]);
 
   function drawFrame(items: Detection[]) {
     const video = videoRef.current;
@@ -173,7 +175,7 @@ export function LiveCounter() {
       ctx.lineWidth = Math.max(2, canvas.width / 600);
       ctx.strokeRect(x, y, w, h);
 
-      const label = `${d.category} ${Math.round((d.confidence ?? 0) * 100)}%`;
+      const label = formatDetectionOverlayLabel(d.category, d.confidence, showDiagnosticConfidence);
       ctx.font = `600 ${Math.max(13, canvas.width / 65)}px system-ui`;
       const labelY = Math.max(0, y - 25);
       ctx.fillStyle = d.counted ? '#e6ae52' : '#42cdb1';
@@ -585,6 +587,9 @@ export function LiveCounter() {
         )}
         {active && paused && <div style={{ position: 'absolute', top: 12, right: 12, borderRadius: 8, padding: '6px 10px', background: '#402f17', color: '#ffd166', fontSize: 12, fontWeight: 700 }}>PAUSED</div>}
       </div>
+      <p style={{ margin: '9px 2px 0', fontSize: 12, lineHeight: 1.6, color: '#c1d0ca' }}>
+        Box labels are AI predictions, not verified facts. Confidence is hidden in the normal view. A detection is not a counted event; totals increase only when the tracker registers a line crossing.
+      </p>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
         {!active
@@ -665,7 +670,11 @@ export function LiveCounter() {
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>Accepted detections</div><strong>{acceptedDetectionCount}</strong></div>
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>Active tracks</div><strong>{trackedObjectCount}</strong></div>
         </div>
-        <p style={{ margin: '12px 0', fontSize: 12, lineHeight: 1.5, opacity: 0.75, minHeight: 36 }}>Browser-camera telemetry only. Empty scenes are normal. Raw and accepted detection counts update as frames are processed; use these diagnostics to investigate missed detections. {health.error ? `Issue: ${health.error}` : 'Camera health is based on video-frame freshness, stream state and local inference latency.'}</p>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 12, cursor: 'pointer' }}>
+          <input type="checkbox" checked={showDiagnosticConfidence} onChange={event => setShowDiagnosticConfidence(event.target.checked)} />
+          Show model confidence on overlay (diagnostic only)
+        </label>
+        <p style={{ margin: '12px 0', fontSize: 12, lineHeight: 1.5, opacity: 0.75, minHeight: 36 }}>Confidence is the model's score for its predicted category, not a calibrated probability that the label is correct. Browser-camera telemetry only. Empty scenes are normal. Raw and accepted detection counts update as frames are processed; use these diagnostics to investigate missed detections. {health.error ? `Issue: ${health.error}` : 'Camera health is based on video-frame freshness, stream state and local inference latency.'}</p>
         <div style={{ borderTop: '1px solid #293c43', paddingTop: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <strong style={{ fontSize: 13 }}>Recent health events</strong><button className="outline-button" onClick={clearHealthHistory} style={{ padding: '5px 8px', fontSize: 12 }}>Clear history</button>
