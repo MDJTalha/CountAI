@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { extname, join, normalize } from 'node:path';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { getSpaisContractManifest, authorizeSpaisAction, isResourceId } from './spais/contracts.mjs';
-import { verifySpaisBearerToken } from './spais/auth.mjs';
+import { verifySpaisBearerTokenAsync } from './spais/authOidc.mjs';
 import { createSqliteSpaisResourceStore, validateSpaisResourceInput } from './spais/resources.mjs';
 import {
   createOperationalEvent,
@@ -19,7 +19,8 @@ const operationalEventStore = process.env.SPAIS_EVENTS_DB_PATH
   : createOperationalEventStore();
 const resourceStore = createSqliteSpaisResourceStore(process.env.SPAIS_EVENTS_DB_PATH);
 const spaisAuthConfigured = Boolean(
-  process.env.SPAIS_AUTH_HS256_SECRET && process.env.SPAIS_AUTH_ISSUER && process.env.SPAIS_AUTH_AUDIENCE
+  (process.env.SPAIS_AUTH_JWKS_URL || process.env.SPAIS_AUTH_HS256_SECRET) &&
+  process.env.SPAIS_AUTH_ISSUER && process.env.SPAIS_AUTH_AUDIENCE
 );
 const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.webmanifest':'application/manifest+json', '.png':'image/png', '.ico':'image/x-icon' };
 function json(res, status, body, extraHeaders = {}) {
@@ -56,8 +57,8 @@ async function readJsonBody(req, maxBytes = 64 * 1024) {
     throw error;
   }
 }
-function authorizeEventRequest(req, organizationId, siteId, action) {
-  const authentication = verifySpaisBearerToken(req.headers.authorization);
+async function authorizeEventRequest(req, organizationId, siteId, action) {
+  const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
   if (!authentication.authenticated) {
     return { status: 401, body: { error: 'unauthorized', reason: authentication.reason }, headers: { 'www-authenticate': 'Bearer' } };
   }
@@ -109,7 +110,7 @@ const server = createServer(async (req, res) => {
     if (siteId && !isResourceId(siteId)) return json(res, 400, { error: 'invalid_site_id' });
 
     const action = req.method === 'GET' ? 'session:read' : 'session:manage';
-    const access = authorizeEventRequest(req, organizationId, siteId, action);
+    const access = await authorizeEventRequest(req, organizationId, siteId, action);
     if (!access.principal) return json(res, access.status, access.body, access.headers);
 
     if (!operationalEventStore.configured) {
@@ -179,7 +180,7 @@ const server = createServer(async (req, res) => {
     }
 
     const action = `${resourceType}:${req.method === 'GET' ? 'read' : 'manage'}`;
-    const authentication = verifySpaisBearerToken(req.headers.authorization);
+    const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
     if (!authentication.authenticated) {
       return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
     }
