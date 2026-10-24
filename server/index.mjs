@@ -9,6 +9,7 @@ import { createConnectorTelemetryReceiver } from './spais/connectorTelemetry.mjs
 import { evaluateRecordingCoverageReports, validateRecordingAssuranceQuery } from './spais/recordingAssurance.mjs';
 import { createSqliteIncidentStore, validateIncidentInput, validateIncidentTransition } from './spais/incidents.mjs';
 import { createSqliteSopStore, validateSopInput, validateSopTransition } from './spais/sops.mjs';
+import { createSqliteLearningCandidateStore, validateLearningCandidateInput, validateLearningCandidateTransition } from './spais/learningCandidates.mjs';
 import {
   createOperationalEvent,
   createOperationalEventStore,
@@ -28,6 +29,7 @@ const connectorTelemetryReceiver = createConnectorTelemetryReceiver({
 });
 const incidentStore = createSqliteIncidentStore(process.env.SPAIS_EVENTS_DB_PATH);
 const sopStore = createSqliteSopStore(process.env.SPAIS_EVENTS_DB_PATH);
+const learningCandidateStore = createSqliteLearningCandidateStore(process.env.SPAIS_EVENTS_DB_PATH);
 const spaisAuthConfigured = Boolean(
   (process.env.SPAIS_AUTH_JWKS_URL || process.env.SPAIS_AUTH_HS256_SECRET) &&
   process.env.SPAIS_AUTH_ISSUER && process.env.SPAIS_AUTH_AUDIENCE
@@ -614,6 +616,83 @@ const server = createServer(async (req, res) => {
       if (error.code === 'invalid_sop_transition') return json(res, 409, { error: error.code, details: error.validationErrors || [] });
       console.error('SPAIS SOP request failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'sop_request_failed' });
+    }
+  }
+
+  // Learning candidates are metadata-only proposals. No API in this lifecycle promotes a model to production.
+  const learningCandidateRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/model-candidates(?:\/([^/]+))?$/);
+  if (learningCandidateRoute) {
+    const candidateIdSegment = learningCandidateRoute[2];
+    const allowedMethods = candidateIdSegment ? ['GET', 'PATCH'] : ['GET', 'POST'];
+    if (!allowedMethods.includes(req.method)) return json(res, 405, { error: 'method_not_allowed' }, { allow: allowedMethods.join(', ') });
+    let organizationId;
+    let candidateId;
+    try {
+      organizationId = decodeURIComponent(learningCandidateRoute[1]);
+      candidateId = candidateIdSegment ? decodeURIComponent(candidateIdSegment) : undefined;
+    } catch { return json(res, 400, { error: 'invalid_resource_id' }); }
+    if (!isResourceId(organizationId) || (candidateId && !isResourceId(candidateId))) return json(res, 400, { error: 'invalid_resource_id' });
+    let input;
+    let siteId = url.searchParams.get('siteId') || undefined;
+    if (req.method === 'POST' || req.method === 'PATCH') {
+      try { input = await readJsonBody(req, 24 * 1024); }
+      catch (error) {
+        const status = error.code === 'request_body_too_large' ? 413 : 400;
+        return json(res, status, { error: error.code || 'invalid_request_body' });
+      }
+      const validation = req.method === 'POST'
+        ? validateLearningCandidateInput(input)
+        : validateLearningCandidateTransition(input);
+      if (!validation.valid) {
+        return json(res, 400, {
+          error: req.method === 'POST' ? 'invalid_learning_candidate' : 'invalid_learning_candidate_transition',
+          details: validation.errors
+        });
+      }
+      if (req.method === 'POST') siteId = input.siteId;
+    }
+    if (!isResourceId(siteId)) return json(res, 400, { error: 'site_id_required' });
+    if (!spaisAuthConfigured || !resourceStore.configured || !learningCandidateStore.configured) {
+      return json(res, 503, { error: 'learning_candidate_api_not_enabled', message: 'Configure trusted bearer identity and persistent SPAIS SQLite storage first.' });
+    }
+    const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
+    if (!authentication.authenticated) return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
+    const action = req.method === 'GET' ? 'model:read' : req.method === 'POST' ? 'model:propose' : 'model:approve';
+    const authorization = authorizeSpaisAction({ principal: authentication.principal, organizationId, siteId, action });
+    if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
+    try {
+      const site = await resourceStore.get({ organizationId, resourceType: 'site', resourceId: siteId });
+      if (!site || site.status !== 'active') return json(res, 404, { error: 'site_not_found' });
+      if (req.method === 'POST') {
+        const candidate = await learningCandidateStore.create({
+          organizationId, actorId: authentication.principal.subjectId, input
+        });
+        return json(res, 201, { candidate });
+      }
+      if (req.method === 'PATCH') {
+        const candidate = await learningCandidateStore.transition({
+          organizationId, siteId, candidateId, actorId: authentication.principal.subjectId,
+          status: input.status, note: input.note
+        });
+        return json(res, 200, { candidate });
+      }
+      if (candidateId) {
+        const candidate = await learningCandidateStore.get({ organizationId, siteId, candidateId });
+        return candidate ? json(res, 200, { candidate }) : json(res, 404, { error: 'learning_candidate_not_found' });
+      }
+      const requestedLimit = Number(url.searchParams.get('limit') || 100);
+      const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 100;
+      const candidates = await learningCandidateStore.list({ organizationId, siteId, limit });
+      return json(res, 200, { organizationId, siteId, candidates, count: candidates.length, limit });
+    } catch (error) {
+      if (error.code === 'learning_candidate_not_found') return json(res, 404, { error: 'learning_candidate_not_found' });
+      if (error.code === 'learning_candidate_self_approval_denied') return json(res, 409, { error: error.code });
+      if (error.code === 'invalid_learning_candidate_transition') return json(res, 409, { error: error.code, details: error.validationErrors || [] });
+      if (error.code === 'invalid_learning_candidate' || error.code === 'invalid_learning_candidate_query') {
+        return json(res, 400, { error: error.code, details: error.validationErrors || [] });
+      }
+      console.error('SPAIS learning candidate request failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'learning_candidate_request_failed' });
     }
   }
 
