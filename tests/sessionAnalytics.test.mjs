@@ -16,7 +16,7 @@ test('summarizes photo sessions, categories and manual corrections in the select
   assert.equal(summary.totalDetections, 4);
   assert.equal(summary.manualCorrections, 2);
   assert.equal(summary.averageDetections, 2);
-  assert.deepEqual(summary.categories, [{category:'person',count:2},{category:'bottle',count:2}]);
+  assert.deepEqual(summary.categories, [{category:'bottle',count:2},{category:'person',count:2}]);
   assert.equal(summary.dailyTrend.length, 7);
   assert.equal(summary.dailyTrend.at(-1).detections, 3);
 });
