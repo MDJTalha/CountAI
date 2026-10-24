@@ -28,7 +28,8 @@ export function validateRecordingAssuranceQuery({ siteId, cameraId, windowStart,
  * evidence of actual recording.
  */
 export function evaluateRecordingCoverageReports({
-  reports, windowStart, windowEnd, now = new Date(), maxReportAgeMinutes = 10
+  organizationId, siteId, cameraId, reports, reportsTruncated = false,
+  windowStart, windowEnd, now = new Date(), maxReportAgeMinutes = 10
 }) {
   const start = Date.parse(windowStart);
   const end = Date.parse(windowEnd);
@@ -68,7 +69,8 @@ export function evaluateRecordingCoverageReports({
   }
   const boundaryGap = full.length > 0 && (full[0].reportStart > start || full[full.length - 1].reportEnd < end);
   let windowContinuity = 'complete';
-  if (relevant.length === 0) windowContinuity = 'no_reports';
+  if (reportsTruncated) windowContinuity = 'report_limit_reached';
+  else if (relevant.length === 0) windowContinuity = 'no_reports';
   else if (hasOverlap) windowContinuity = 'overlaps_detected';
   else if (hasGap || boundaryGap) windowContinuity = 'gaps_detected';
   else if (partialReportCount > 0) windowContinuity = 'partial_windows_excluded';
@@ -82,7 +84,8 @@ export function evaluateRecordingCoverageReports({
     latestReceiptAgeSeconds <= maxReportAgeMinutes * 60;
 
   let assessment = 'no_reports';
-  if (full.length > 0 && expectedReportedSeconds > 0) {
+  if (reportsTruncated) assessment = 'incomplete_report_windows';
+  else if (full.length > 0 && expectedReportedSeconds > 0) {
     assessment = windowContinuity === 'complete'
       ? (reportedCoveragePercent >= 99.5 ? 'reported_coverage_high' : 'reported_coverage_gap')
       : 'incomplete_report_windows';
@@ -92,8 +95,9 @@ export function evaluateRecordingCoverageReports({
 
   return {
     contractVersion: 1,
-    siteId: reports[0]?.siteId ?? null,
-    cameraId: reports[0]?.payload?.cameraId ?? null,
+    organizationId: organizationId ?? null,
+    siteId: siteId ?? null,
+    cameraId: cameraId ?? null,
     requestedWindow: { start: new Date(start).toISOString(), end: new Date(end).toISOString() },
     reportCount: relevant.length,
     evaluatedReportCount: full.length,
