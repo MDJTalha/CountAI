@@ -1,6 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHmac, generateKeyPairSync, sign } from 'node:crypto';
+import { createHmac, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
+import { canonicalizeConnectorTelemetry } from '../server/spais/connectorTelemetry.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -264,6 +265,64 @@ test('connector enrollment requires one-time RSA proof-of-possession and creates
   assert.equal(connectorRead.status, 200);
   assert.equal((await connectorRead.json()).resource.status, 'enrolled');
 
+  // Rotation is allowed while the connector is enrolled; successful rotation revokes the prior key.
+  const rotatedKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const rotationChallengeResponse = await fetch(
+    `${baseUrl}/api/v1/organizations/org-1/connectors/connector-enroll-1/enrollment-challenges?siteId=site-1`,
+    {
+      method: 'POST',
+      headers: { ...auth(), 'content-type': 'application/json' },
+      body: JSON.stringify({ publicKeyJwk: rotatedKeys.publicKey.export({ format: 'jwk' }) })
+    }
+  );
+  assert.equal(rotationChallengeResponse.status, 201);
+  const rotationChallenge = (await rotationChallengeResponse.json()).enrollment;
+  const rotationProof = sign(
+    'RSA-SHA256',
+    Buffer.from(rotationChallenge.enrollmentId + '.' + rotationChallenge.challenge),
+    rotatedKeys.privateKey
+  ).toString('base64url');
+  const rotationCompletion = await fetch(
+    `${baseUrl}/api/v1/connector-enrollments/${rotationChallenge.enrollmentId}/complete`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ challenge: rotationChallenge.challenge, signature: rotationProof })
+    }
+  );
+  assert.equal(rotationCompletion.status, 200);
+  assert.notEqual((await rotationCompletion.json()).enrollment.keyThumbprint, result.keyThumbprint);
+
+  const telemetry = keyPair => {
+    const message = {
+      organizationId: 'org-1', siteId: 'site-1', connectorId: 'connector-enroll-1',
+      timestamp: new Date().toISOString(), nonce: randomBytes(24).toString('base64url'),
+      eventType: 'connector.heartbeat', payload: { status: 'healthy' }
+    };
+    message.signature = sign('RSA-SHA256', canonicalizeConnectorTelemetry(message), keyPair).toString('base64url');
+    return message;
+  };
+  const telemetryUrl = `${baseUrl}/api/v1/connectors/connector-enroll-1/telemetry`;
+  const oldKeyTelemetry = await fetch(telemetryUrl, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(telemetry(privateKey))
+  });
+  assert.equal(oldKeyTelemetry.status, 401);
+  const newKeyTelemetry = await fetch(telemetryUrl, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(telemetry(rotatedKeys.privateKey))
+  });
+  assert.equal(newKeyTelemetry.status, 202);
+
+  const revoked = await fetch(
+    `${baseUrl}/api/v1/organizations/org-1/connectors/connector-enroll-1?siteId=site-1`,
+    { method: 'PATCH', headers: { ...auth(), 'content-type': 'application/json' }, body: JSON.stringify({ status: 'revoked' }) }
+  );
+  assert.equal(revoked.status, 200);
+  const revokedTelemetry = await fetch(telemetryUrl, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(telemetry(rotatedKeys.privateKey))
+  });
+  assert.equal(revokedTelemetry.status, 401);
+  assert.equal((await revokedTelemetry.json()).error, 'connector_identity_not_active');
+
   const replay = await fetch(completionUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -275,4 +334,6 @@ test('connector enrollment requires one-time RSA proof-of-possession and creates
   const events = (await audit.json()).events;
   assert.ok(events.some(item => item.action === 'connector.enrollment_challenge_created'));
   assert.ok(events.some(item => item.action === 'connector.enrollment_completed'));
+  assert.ok(events.some(item => item.action === 'connector.key_rotated'));
+  assert.ok(events.some(item => item.action === 'connector.key_revoked'));
 });
