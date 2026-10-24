@@ -231,3 +231,19 @@ button:active:not(:disabled){transform:translateY(1px)}
 .ops-disclaimer{margin:15px 4px 0}
 @media(max-width:760px){.ops-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-welcome{flex-direction:column}.ops-panel-title{align-items:flex-start;flex-direction:column}.ops-panel-title>.primary-button{width:100%}}
 @media(max-width:520px){.ops-workspace{padding-top:10px}.ops-connect-panel,.ops-content-panel{padding:15px;border-radius:16px}.ops-connection-fields,.ops-create-form{grid-template-columns:1fr}.ops-token-field,.ops-form-actions,.ops-create-form>small{grid-column:auto}.ops-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.ops-tab{justify-content:flex-start;padding:9px}.ops-resource-row,.ops-event-row{gap:8px}.ops-resource-icon,.ops-event-icon{width:32px;height:32px}.ops-resource-row>.capability-state{font-size:9px;max-width:90px;text-align:right}}
+
+
+.ops-enrollment-panel{margin:14px 0 18px;border:1px solid #dbe7e0;border-radius:15px;padding:17px;background:#f7faf8}
+.ops-enrollment-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.ops-enrollment-heading h3{font:750 14px Manrope,sans-serif;margin:0}
+.ops-enrollment-heading p{font-size:11px;line-height:1.6;color:var(--muted);max-width:620px;margin:5px 0 0}
+.ops-enrollment-form{display:grid;gap:12px}
+.ops-enrollment-form label{display:flex;flex-direction:column;gap:7px;font-size:11px;font-weight:700;color:#536a60}
+.ops-enrollment-form select,.ops-enrollment-form textarea,.ops-challenge-result textarea{width:100%;min-width:0;border:1px solid #d8e3dc;border-radius:10px;background:#fff;color:var(--ink);padding:11px 12px;font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical}
+.ops-enrollment-form select{font:12px 'DM Sans',system-ui,sans-serif}
+.ops-challenge-result{display:grid;gap:8px;margin-top:15px;padding:14px;border-radius:12px;border:1px solid #cfe4d8;background:#edf7f1;overflow-wrap:anywhere}
+.ops-challenge-result strong{font-size:12px}
+.ops-challenge-result small{font-size:10px;color:#5f786d;line-height:1.5}
+.ops-challenge-result code{font-size:10px;overflow-wrap:anywhere}
+.ops-challenge-result p{font-size:10px;line-height:1.6;color:#5f786d;margin:0}
+@media(max-width:560px){.ops-enrollment-panel{padding:12px}.ops-enrollment-heading{flex-direction:column}}
