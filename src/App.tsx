@@ -42,7 +42,8 @@ export function App() {
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const totals = totalsByCategory(detections);
   useEffect(() => { listSessions().then(setSessions).catch(() => setMessage('Local history is unavailable in this browser.')); }, []);
-  useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); stream?.getTracks().forEach(t => t.stop()); }, [imageUrl, stream]);
+  useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
+  useEffect(() => () => { stream?.getTracks().forEach(t => t.stop()); }, [stream]);
   useEffect(() => { draw(); }, [image, detections, showPhotoDiagnosticConfidence]);
   useEffect(() => {
     if (!editModalOpen) {
