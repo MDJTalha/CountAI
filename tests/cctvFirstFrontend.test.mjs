@@ -65,7 +65,7 @@ test('autonomous learning workbench accepts authorized sources but does not clai
   for (const kind of ['document', 'image', 'observation', 'video_recording']) assert.ok(learning.includes(`value="${kind}"`));
   assert.match(learning, /consentConfirmed: true/);
   assert.match(learning, /8 MB/);
-  assert.match(learning, /human review\/annotation is still required/);
+  assert.match(learning, /[Hh]uman review\/annotation is still required/);
   assert.match(learning, /Direct continuous capture from network CCTV requires the stream adapter/);
   assert.match(readme, /does not yet extract text from PDFs, run image\/video inference/);
 });
