@@ -213,6 +213,34 @@ export function createConnectorTelemetryReceiver({
           : 'signed_connector_report'
       };
     },
+    async list({ organizationId, siteId, connectorId, limit = 100 } = {}) {
+      if (!isResourceId(organizationId) || !isResourceId(siteId) || !isResourceId(connectorId)) {
+        throw fail('invalid_telemetry_query');
+      }
+      const boundedLimit = Number.isInteger(limit) ? Math.max(1, Math.min(100, limit)) : 100;
+      const db = await getDatabase();
+      const rows = db.prepare(`
+        SELECT telemetry_id, organization_id, site_id, connector_id, signed_timestamp,
+               event_type, payload_json, received_at, trust_level
+        FROM spais_connector_telemetry
+        WHERE organization_id = ? AND site_id = ? AND connector_id = ?
+        ORDER BY sequence DESC LIMIT ?
+      `).all(organizationId, siteId, connectorId, boundedLimit);
+      return rows.map(row => ({
+        telemetryId: row.telemetry_id,
+        organizationId: row.organization_id,
+        siteId: row.site_id,
+        connectorId: row.connector_id,
+        signedAt: row.signed_timestamp,
+        eventType: row.event_type,
+        payload: JSON.parse(row.payload_json),
+        receivedAt: row.received_at,
+        trustLevel: row.trust_level,
+        interpretation: row.event_type === 'recorder.recording_coverage'
+          ? 'reported_not_independently_verified'
+          : 'signed_connector_report'
+      }));
+    },
     async close() {
       if (!databasePromise) return;
       const db = await databasePromise;
