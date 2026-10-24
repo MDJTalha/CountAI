@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, chmod, writeFile, rm, lstat, open } from 'node:fs/promises';
+import { mkdir, readFile, rename, chmod, rm, lstat, open } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 const MAX_ITEMS = 1000;
