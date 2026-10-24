@@ -4,6 +4,7 @@ import { extname, join, normalize } from 'node:path';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { getSpaisContractManifest, authorizeSpaisAction, isResourceId } from './spais/contracts.mjs';
 import { verifySpaisBearerToken } from './spais/auth.mjs';
+import { createSqliteSpaisResourceStore, validateSpaisResourceInput } from './spais/resources.mjs';
 import {
   createOperationalEvent,
   createOperationalEventStore,
@@ -16,6 +17,10 @@ const port = Number(process.env.PORT || 8787);
 const operationalEventStore = process.env.SPAIS_EVENTS_DB_PATH
   ? createSqliteOperationalEventStore(process.env.SPAIS_EVENTS_DB_PATH)
   : createOperationalEventStore();
+const resourceStore = createSqliteSpaisResourceStore(process.env.SPAIS_EVENTS_DB_PATH);
+const spaisAuthConfigured = Boolean(
+  process.env.SPAIS_AUTH_HS256_SECRET && process.env.SPAIS_AUTH_ISSUER && process.env.SPAIS_AUTH_AUDIENCE
+);
 const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.webmanifest':'application/manifest+json', '.png':'image/png', '.ico':'image/x-icon' };
 function json(res, status, body, extraHeaders = {}) {
   res.writeHead(status, {
@@ -71,7 +76,10 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   if (url.pathname === '/api/health') return json(res, 200, {ok:true, service:'countai-api', cloudRecognitionConfigured:false});
   if (url.pathname === '/api/v1/spais/contracts' && req.method === 'GET') {
-    return json(res, 200, getSpaisContractManifest());
+    return json(res, 200, getSpaisContractManifest({
+      authenticationConfigured: spaisAuthConfigured,
+      tenantResourceApiEnabled: spaisAuthConfigured && resourceStore.configured
+    }));
   }
 
   // Operational events are tenant-scoped. The organization comes from the URL,
@@ -107,7 +115,7 @@ const server = createServer(async (req, res) => {
     if (!operationalEventStore.configured) {
       return json(res, 503, {
         error: 'event_store_not_configured',
-        message: 'Set SPAIS_EVENTS_FILE to an approved writable path before enabling operational event persistence.'
+        message: 'Set SPAIS_EVENTS_DB_PATH for durable SQLite persistence or SPAIS_EVENTS_FILE for the pilot JSONL store.'
       });
     }
 
@@ -131,6 +139,82 @@ const server = createServer(async (req, res) => {
       }
       console.error('SPAIS operational event request failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'operational_event_request_failed' });
+    }
+  }
+
+  // Site, camera and connector metadata use the persistent SQLite registry.
+  // Camera and connector operations are always scoped to one authorized site.
+  const resourceRoute = url.pathname.match(/^\\/api\\/v1\\/organizations\\/([^/]+)\\/(sites|cameras|connectors)$/);
+  if (resourceRoute) {
+    if (req.method !== 'GET' && req.method !== 'POST') {
+      return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET, POST' });
+    }
+    let organizationId;
+    try { organizationId = decodeURIComponent(resourceRoute[1]); }
+    catch { return json(res, 400, { error: 'invalid_organization_id' }); }
+    if (!isResourceId(organizationId)) return json(res, 400, { error: 'invalid_organization_id' });
+    if (!spaisAuthConfigured || !resourceStore.configured) {
+      return json(res, 503, {
+        error: 'tenant_api_not_enabled',
+        message: 'Configure trusted bearer-token verification and SPAIS_EVENTS_DB_PATH before using tenant resource APIs.'
+      });
+    }
+
+    const resourceType = resourceRoute[2] === 'sites' ? 'site' : resourceRoute[2] === 'cameras' ? 'camera' : 'connector';
+    let input;
+    let siteId = url.searchParams.get('siteId') || undefined;
+    if (req.method === 'POST') {
+      try { input = await readJsonBody(req); }
+      catch (error) {
+        const status = error.code === 'request_body_too_large' ? 413 : 400;
+        return json(res, status, { error: error.code || 'invalid_request_body' });
+      }
+      const validation = validateSpaisResourceInput(resourceType, input);
+      if (!validation.valid) return json(res, 400, { error: 'invalid_resource', details: validation.errors });
+      if (resourceType !== 'site') siteId = input.siteId;
+    }
+    if (siteId && !isResourceId(siteId)) return json(res, 400, { error: 'invalid_site_id' });
+    if (req.method === 'GET' && resourceType !== 'site' && !siteId) {
+      return json(res, 400, { error: 'site_id_required', message: 'Camera and connector inventory reads must specify an authorized siteId.' });
+    }
+
+    const action = `${resourceType}:${req.method === 'GET' ? 'read' : 'manage'}`;
+    const authentication = verifySpaisBearerToken(req.headers.authorization);
+    if (!authentication.authenticated) {
+      return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
+    }
+    const authorization = authorizeSpaisAction({
+      principal: authentication.principal,
+      organizationId,
+      ...(siteId ? { siteId } : {}),
+      action
+    });
+    if (!authorization.allowed) {
+      return json(res, 403, { error: 'forbidden', reason: authorization.reason });
+    }
+
+    try {
+      if (req.method === 'POST') {
+        const resource = await resourceStore.create({
+          organizationId,
+          actorId: authentication.principal.subjectId,
+          resourceType,
+          input
+        });
+        return json(res, 201, { resource });
+      }
+      const requestedLimit = Number(url.searchParams.get('limit') || 100);
+      const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 100;
+      const resources = await resourceStore.list({ organizationId, resourceType, siteId, limit });
+      return json(res, 200, { organizationId, resourceType, resources, count: resources.length, limit });
+    } catch (error) {
+      if (error.code === 'invalid_resource') {
+        return json(res, 400, { error: 'invalid_resource', details: error.validationErrors || [] });
+      }
+      if (error.code === 'resource_already_exists') return json(res, 409, { error: 'resource_already_exists' });
+      if (error.code === 'site_not_found') return json(res, 404, { error: 'site_not_found' });
+      console.error('SPAIS resource request failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'resource_request_failed' });
     }
   }
 
