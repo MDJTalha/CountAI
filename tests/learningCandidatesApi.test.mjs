@@ -1,6 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
+import { createHmac, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
+import { canonicalizeLearningEvaluationReport } from '../server/spais/learningEvaluations.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,12 +15,13 @@ let output = '';
 const secret = 'test-only-spais-learning-secret';
 const issuer = 'https://identity.example.test/';
 const audience = 'spais-api';
+const evaluatorKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 
 function token({
   sub = 'operator-1',
   organizationIds = ['org-1'],
   sitesByOrganization = { 'org-1': ['site-1'] },
-  permissions = ['site:read', 'site:manage', 'model:read', 'model:propose', 'model:approve', 'audit:read']
+  permissions = ['site:read', 'site:manage', 'model:read', 'model:propose', 'model:approve', 'model:evaluate', 'audit:read']
 } = {}) {
   const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
   const header = encode({ alg: 'HS256', typ: 'JWT' });
@@ -50,7 +52,13 @@ before(async () => {
       SPAIS_EVENTS_DB_PATH: join(tempDir, 'spais.sqlite'),
       SPAIS_AUTH_HS256_SECRET: secret,
       SPAIS_AUTH_ISSUER: issuer,
-      SPAIS_AUTH_AUDIENCE: audience
+      SPAIS_AUTH_AUDIENCE: audience,
+      SPAIS_EVALUATOR_PUBLIC_KEY_JWK: JSON.stringify(evaluatorKeys.publicKey.export({ format: 'jwk' })),
+      SPAIS_EVALUATOR_KEY_ID: 'test-evaluator-v1',
+      SPAIS_EVALUATION_MIN_SAMPLE_COUNT: '100',
+      SPAIS_EVALUATION_MIN_PRECISION: '0.95',
+      SPAIS_EVALUATION_MIN_RECALL: '0.90',
+      SPAIS_EVALUATION_MAX_FALSE_POSITIVE_RATE: '0.05'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -138,6 +146,74 @@ test('learning candidates are scoped, auditable, independently reviewed for eval
   assert.equal(evaluationGate.status, 200);
   assert.equal((await evaluationGate.json()).candidate.status, 'evaluation_pending');
 
+  function signedEvaluation(overrides = {}) {
+    const report = {
+      runId: 'evaluation-run-' + randomBytes(6).toString('hex'),
+      artifactSha256: candidateInput.artifactSha256,
+      evaluationDatasetSha256: candidateInput.evaluationDatasetSha256,
+      evaluatorVersion: 'spais-independent-evaluator/1.0',
+      evaluatedAt: new Date().toISOString(),
+      nonce: randomBytes(24).toString('base64url'),
+      sampleCount: 1000,
+      precision: 0.98,
+      recall: 0.95,
+      falsePositiveRate: 0.01,
+      ...overrides
+    };
+    report.signature = sign('RSA-SHA256', canonicalizeLearningEvaluationReport({
+      organizationId: 'org-1', siteId: 'site-1', candidateId: created.id, report
+    }), evaluatorKeys.privateKey).toString('base64url');
+    return report;
+  }
+  const evaluationPath = '/api/v1/organizations/org-1/model-candidates/' + created.id + '/evaluations?siteId=site-1';
+  const goodReport = signedEvaluation();
+  const tamperedReport = { ...goodReport, recall: 0.1 };
+  const tamperedResponse = await fetch(baseUrl + evaluationPath, {
+    method: 'POST', headers: { ...auth({ sub: 'evaluator-service', permissions: ['site:read', 'model:evaluate'] }), 'content-type': 'application/json' },
+    body: JSON.stringify(tamperedReport)
+  });
+  assert.equal(tamperedResponse.status, 401);
+  assert.equal((await tamperedResponse.json()).error, 'invalid_evaluator_signature');
+
+  const goodEvaluationResponse = await fetch(baseUrl + evaluationPath, {
+    method: 'POST', headers: { ...auth({ sub: 'evaluator-service', permissions: ['site:read', 'model:evaluate'] }), 'content-type': 'application/json' },
+    body: JSON.stringify(goodReport)
+  });
+  assert.equal(goodEvaluationResponse.status, 201);
+  const goodEvaluation = (await goodEvaluationResponse.json()).evaluation;
+  assert.equal(goodEvaluation.result, 'passed');
+  assert.equal(goodEvaluation.evaluatorKeyId, 'test-evaluator-v1');
+  assert.equal(goodEvaluation.thresholds.minSampleCount, 100);
+
+  const failingReport = signedEvaluation({
+    precision: 0.7, recall: 0.8, falsePositiveRate: 0.2
+  });
+  const failingResponse = await fetch(baseUrl + evaluationPath, {
+    method: 'POST', headers: { ...auth({ sub: 'evaluator-service', permissions: ['site:read', 'model:evaluate'] }), 'content-type': 'application/json' },
+    body: JSON.stringify(failingReport)
+  });
+  assert.equal(failingResponse.status, 201);
+  assert.equal((await failingResponse.json()).evaluation.result, 'failed');
+
+  const replay = await fetch(baseUrl + evaluationPath, {
+    method: 'POST', headers: { ...auth({ sub: 'evaluator-service', permissions: ['site:read', 'model:evaluate'] }), 'content-type': 'application/json' },
+    body: JSON.stringify(goodReport)
+  });
+  assert.equal(replay.status, 409);
+  assert.equal((await replay.json()).error, 'learning_evaluation_replay_detected');
+
+  const evaluationList = await fetch(baseUrl + evaluationPath, { headers: auth() });
+  assert.equal(evaluationList.status, 200);
+  const evaluationBody = await evaluationList.json();
+  assert.equal(evaluationBody.count, 2);
+  assert.equal(evaluationBody.evaluations[0].result, 'failed');
+
+  const candidateAfterEvaluation = await fetch(baseUrl + '/api/v1/organizations/org-1/model-candidates/' + created.id + '?siteId=site-1', { headers: auth() });
+  const candidateState = (await candidateAfterEvaluation.json()).candidate;
+  assert.equal(candidateState.status, 'evaluation_pending');
+  assert.equal(candidateState.evaluationStatus, 'failed');
+  assert.ok(candidateState.latestEvaluationId);
+
   const attemptedPromotion = await transition('active', 'Promote candidate to production', { sub: 'reviewer-2' });
   assert.equal(attemptedPromotion.status, 400);
   const stillPending = await fetch(baseUrl + '/api/v1/organizations/org-1/model-candidates/' + created.id + '?siteId=site-1', { headers: auth() });
@@ -155,5 +231,5 @@ test('learning candidates are scoped, auditable, independently reviewed for eval
   const audit = await fetch(baseUrl + '/api/v1/organizations/org-1/audit?siteId=site-1', { headers: auth() });
   assert.equal(audit.status, 200);
   const actions = (await audit.json()).events.filter(event => event.resourceType === 'model_candidate' && event.resourceId === created.id).map(event => event.action);
-  assert.deepEqual(actions, ['model_candidate.status_changed', 'model_candidate.status_changed', 'model_candidate.created']);
+  assert.deepEqual(actions, ['model_candidate.evaluation_failed', 'model_candidate.evaluation_passed', 'model_candidate.status_changed', 'model_candidate.status_changed', 'model_candidate.created']);
 });
