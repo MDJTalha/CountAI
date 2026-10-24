@@ -63,3 +63,16 @@ test('rejects unsupported algorithms and malformed tokens', () => {
   assert.equal(verifySpaisBearerToken('Bearer ' + token(validClaims, { alg: 'none', typ: 'JWT' }), config).reason, 'unsupported_token');
   assert.equal(verifySpaisBearerToken('Bearer abc.def', config).reason, 'malformed_token');
 });
+
+
+test('rejects oversized tokens and unsupported critical JOSE headers', () => {
+  assert.equal(verifySpaisBearerToken('Bearer ' + 'a'.repeat(16 * 1024 + 1), config).reason, 'token_size_invalid');
+  assert.equal(verifySpaisBearerToken('Bearer ' + token(validClaims, { alg: 'HS256', typ: 'JWT', crit: ['exp'] }), config).reason, 'unsupported_token');
+  assert.equal(verifySpaisBearerToken('Bearer ' + token(validClaims, { alg: 'HS256', typ: 'JWT', b64: false }), config).reason, 'unsupported_token');
+});
+
+test('rejects duplicate or malformed tenant scope claims', () => {
+  assert.equal(verifySpaisBearerToken('Bearer ' + token({ ...validClaims, organizationIds: ['org-1', 'org-1'] }), config).reason, 'invalid_organization_claim');
+  assert.equal(verifySpaisBearerToken('Bearer ' + token({ ...validClaims, sitesByOrganization: { 'org-other': ['site-1'] } }), config).reason, 'invalid_site_claim');
+  assert.equal(verifySpaisBearerToken('Bearer ' + token({ ...validClaims, sitesByOrganization: { 'org-1': ['bad site'] } }), config).reason, 'invalid_site_claim');
+});
