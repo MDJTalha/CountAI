@@ -19,7 +19,7 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Resource validation, duplicate-ID rejection, registered-site checks for child resources, server-assigned creator identity and rejection of credential/stream-URL metadata.
 - API readiness manifest reflects whether authentication settings and SQLite persistence are configured.
 
-## Implemented in the current open PR
+## Implemented on `main`
 - Adds an optional OIDC/JWKS RS256 token-verification path alongside the existing HS256 service-token adapter.
 - Uses only a server-configured JWKS URL; rejects token-supplied `jku`/`x5u`, non-RS256 algorithms and non-HTTPS remote key URLs.
 - Validates signature, issuer, audience, expiry, not-before, subject, organization scope, site scope and permission claims.
@@ -58,9 +58,8 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 6. Report each capability as planned, implemented, automated-test passed, lab-verified, pilot-accepted or production-approved with evidence.
 
 ## Next implementation gate
-1. Validate the OIDC/JWKS verifier with full CI, including negative token and key-rotation tests.
-2. Configure a real trusted identity provider in a controlled environment and verify its issuer, audience, tenant and permission claim mapping.
-3. Add resource update/deactivate lifecycle operations and transactional audit events.
-4. Design customer-controlled connector enrollment and recorder-side recording assurance; metadata inventory is not a connected camera.
-5. Add incident/SOP governance and a governed learning lifecycle.
-6. Configure backup/retention/monitoring for single-host SQLite; use a shared transactional database service for multi-instance deployments.
+1. Validate the resource lifecycle/audit PR with full CI and review audit transaction and isolation behavior.
+2. Configure a real trusted identity provider in a controlled environment and verify issuer, audience, tenant and permission claim mapping.
+3. Design customer-controlled connector enrollment and recorder-side recording assurance; metadata inventory is not a connected camera.
+4. Add incident/SOP governance and a governed learning lifecycle.
+5. Configure backup/retention/monitoring for single-host SQLite; use a shared transactional database service for multi-instance deployments.
