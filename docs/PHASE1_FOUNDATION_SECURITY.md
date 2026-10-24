@@ -42,13 +42,13 @@ Customer contracts and applicable law determine exact retention periods. Until a
 Required policy before production:
 1. Define a retention class and approved period for each data type: uploaded source media, source text/metadata, operational events, incidents/evidence references, connector queues, security/audit events, backups and browser-local session history.
 2. Keep raw CCTV/video in the customer-controlled environment by default. Uploading learning material requires explicit authorization; it must not be treated as an automatic training opt-in.
-3. Provide an authorized deletion/export workflow for customer data and document the expected deletion window, backup expiry and legal-hold exception.
+3. Provide an authorized deletion/export workflow for customer data and document the expected deletion window, backup expiry and legal-hold exception. The learning-source API now supports site-scoped `DELETE /api/v1/organizations/:organizationId/learning-sources/:sourceId?siteId=...` with the dedicated `model:manage` permission; deletion leaves a minimal audit entry and reports whether media cleanup is pending.
 4. Preserve a minimal audit record of the deletion action without retaining the deleted media or sensitive source contents.
 5. Verify deletion from primary storage, temporary files, derived datasets, caches and backups according to the approved retention policy.
 6. Prevent deletion of required security/audit records by ordinary operators; restrict audit retention administration to a separately authorized role.
 7. Test the deletion workflow, tenant isolation, concurrent access, interrupted cleanup and backup restoration.
 
-**Current limitation:** the learning-source API currently ingests and lists sources but does not yet expose a server-side source deletion/retention scheduler. Browser-local live-session deletion is separate and does not delete server-stored learning media. Treat the server-side deletion workflow and automated expiry job as a Phase 1 exit blocker, not a completed feature.
+**Current implementation boundary:** authorized server-side learning-source deletion and an opt-in retention-expiry maintenance command are implemented. Schedule `npm run maintenance:expire-learning-sources` with `SPAIS_EVENTS_DB_PATH` and an approved `COUNTAI_LEARNING_SOURCE_RETENTION_DAYS` value to enforce expiry. A value of `0` disables automatic expiry. The command is not a background scheduler by itself; deployment operations must schedule it and monitor its result. Browser-local live-session deletion is separate and does not delete server-stored learning media.
 
 ## Persistence and recovery
 
@@ -76,7 +76,7 @@ The CI pipeline must run all required test suites, including the security-contro
 - [x] Add bounded, configurable process-local API rate limits and request timeouts.
 - [x] Add regression tests for limits, headers, forwarded-header spoofing and health-probe behavior.
 - [x] Include the new security suites in CI and the default test command.
-- [ ] Implement and test authorized server-side learning-source deletion and retention expiry.
+- [x] Implement and test authorized site-scoped learning-source deletion and an opt-in retention-expiry maintenance command.\n- [ ] Configure and monitor the scheduled retention task with a customer-approved retention period.
 - [ ] Configure production OIDC, secret rotation/revocation and trusted TLS gateway.
 - [ ] Configure SQLite backup/restore and document verified RPO/RTO, or select a supported shared database.
 - [ ] Run an independent security review and deployment-level load/recovery tests.
