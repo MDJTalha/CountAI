@@ -113,3 +113,57 @@ test('edge agent rejects unsafe endpoint URLs and recorder payloads with extra f
     privateKey: pair.privateKey, recorderStatusUrl: 'https://recorder.example.test/status'
   }, { fetchImpl }), error => error.code === 'invalid_recorder_response');
 });
+
+
+test('offline queue durably retries with a stable delivery ID and a fresh signed nonce', async () => {
+  const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const dir = await mkdtemp(join(tmpdir(), 'spais-agent-queue-'));
+  const queuePath = join(dir, 'telemetry-queue.json');
+  const firstAttempt = [];
+  try {
+    const failed = await runConnectorOnce({
+      serverUrl: 'https://spais.example.test',
+      organizationId: 'org-1', siteId: 'site-1', connectorId: 'connector-1',
+      privateKey: pair.privateKey, queuePath
+    }, {
+      now: () => new Date('2026-10-24T10:00:00.000Z'),
+      fetchImpl: async (_url, options) => {
+        firstAttempt.push(JSON.parse(options.body));
+        throw new Error('network unavailable');
+      }
+    });
+    assert.equal(failed.acceptedCount, 0);
+    assert.equal(failed.queuedCount, 1);
+    assert.equal(failed.deliveryMode, 'durable-at-least-once');
+    assert.ok(firstAttempt[0].deliveryId);
+    const queuedBeforeRetry = JSON.parse(await readFile(queuePath, 'utf8'));
+    assert.equal(queuedBeforeRetry.length, 1);
+    assert.equal(queuedBeforeRetry[0].deliveryId, firstAttempt[0].deliveryId);
+    assert.equal(JSON.stringify(queuedBeforeRetry).includes('network unavailable'), false);
+
+    const retryMessages = [];
+    const recovered = await runConnectorOnce({
+      serverUrl: 'https://spais.example.test',
+      organizationId: 'org-1', siteId: 'site-1', connectorId: 'connector-1',
+      privateKey: pair.privateKey, queuePath
+    }, {
+      now: () => new Date('2026-10-24T10:00:10.000Z'),
+      fetchImpl: async (_url, options) => {
+        const message = JSON.parse(options.body);
+        retryMessages.push(message);
+        return { ok: true, status: 202, json: async () => ({ receipt: { telemetryId: 'receipt-1' } }) };
+      }
+    });
+    assert.equal(recovered.queuedCount, 0);
+    assert.equal(recovered.acceptedCount, 2);
+    assert.equal(JSON.parse(await readFile(queuePath, 'utf8')).length, 0);
+    assert.equal(retryMessages[0].deliveryId, firstAttempt[0].deliveryId);
+    assert.notEqual(retryMessages[0].nonce, firstAttempt[0].nonce);
+    assert.ok(verify(
+      'RSA-SHA256', canonicalizeConnectorTelemetry(retryMessages[0]), pair.publicKey,
+      Buffer.from(retryMessages[0].signature, 'base64url')
+    ));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
