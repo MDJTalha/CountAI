@@ -46,6 +46,10 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
   const [resourceName, setResourceName] = useState('');
   const [resourceId, setResourceId] = useState('');
   const [resourceType, setResourceType] = useState<'site' | 'camera' | 'connector'>('site');
+  const [cameraVendor, setCameraVendor] = useState('');
+  const [cameraModel, setCameraModel] = useState('');
+  const [cameraProtocol, setCameraProtocol] = useState<'unknown' | 'rtsp' | 'onvif' | 'vendor_api' | 'https_gateway'>('unknown');
+  const [cameraTransport, setCameraTransport] = useState<'ethernet' | 'wifi' | 'other'>('ethernet');
   const [enrollmentConnectorId, setEnrollmentConnectorId] = useState('');
   const [publicKeyText, setPublicKeyText] = useState('');
   const [enrollmentChallenge, setEnrollmentChallenge] = useState<EnrollmentChallenge | null>(null);
@@ -150,12 +154,20 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
     setBusy(true); setIsError(false);
     try {
       const collection = resourceType === 'site' ? 'sites' : resourceType === 'camera' ? 'cameras' : 'connectors';
-      const body = { id: resourceId.trim(), name: resourceName.trim(), ...(resourceType === 'site' ? {} : { siteId: siteId.trim() }), metadata: {} };
+      const metadata = resourceType === 'camera' ? {
+        sourceType: 'network_camera',
+        integrationState: 'not_configured',
+        protocol: cameraProtocol,
+        transport: cameraTransport,
+        ...(cameraVendor.trim() ? { vendor: cameraVendor.trim().slice(0, 100) } : {}),
+        ...(cameraModel.trim() ? { model: cameraModel.trim().slice(0, 100) } : {})
+      } : resourceType === 'connector' ? { integrationState: 'not_enrolled' } : {};
+      const body = { id: resourceId.trim(), name: resourceName.trim(), ...(resourceType === 'site' ? {} : { siteId: siteId.trim() }), metadata };
       await readResponse<{ resource: Resource }>(await fetch(resourcePath(collection), {
         method: 'POST', headers: headers(true), body: JSON.stringify(body)
       }));
       if (requestScope !== currentScopeKey.current) return;
-      setResourceId(''); setResourceName(''); setCreateOpen(false);
+      setResourceId(''); setResourceName(''); setCameraVendor(''); setCameraModel(''); setCameraProtocol('unknown'); setCameraTransport('ethernet'); setCreateOpen(false);
       await loadAll();
       setMessage(`${resourceType} metadata created. Inventory registration does not connect a camera or enroll a connector.`);
     } catch (error) {
@@ -225,7 +237,17 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
       {createOpen && section !== 'events' && <form className="ops-create-form" onSubmit={event => void createResource(event)}>
         <label>Resource type<select value={resourceType} onChange={e => setResourceType(e.target.value as typeof resourceType)}><option value="site">Site</option><option value="camera">Camera</option><option value="connector">Connector</option></select></label>
         <label>Stable ID<input required maxLength={100} value={resourceId} onChange={e => setResourceId(e.target.value)} placeholder="e.g. site-lahore-01"/></label>
-        <label>Display name<input required maxLength={160} value={resourceName} onChange={e => setResourceName(e.target.value)} placeholder="e.g. Lahore warehouse"/></label>
+        <label>Display name<input required maxLength={160} value={resourceName} onChange={e => setResourceName(e.target.value)} placeholder={resourceType === 'camera' ? 'e.g. Warehouse entrance camera' : resourceType === 'connector' ? 'e.g. Warehouse edge connector' : 'e.g. Lahore warehouse'}/></label>
+        {resourceType === 'camera' && <div className="ops-camera-profile">
+          <p>Camera integration profile <strong>Metadata only</strong></p>
+          <div className="ops-connection-fields">
+            <label>Manufacturer / vendor<input maxLength={100} value={cameraVendor} onChange={e => setCameraVendor(e.target.value)} placeholder="e.g. Hikvision, Dahua, Axis" autoComplete="off"/></label>
+            <label>Model (optional)<input maxLength={100} value={cameraModel} onChange={e => setCameraModel(e.target.value)} placeholder="Device model" autoComplete="off"/></label>
+            <label>Expected protocol<select value={cameraProtocol} onChange={e => setCameraProtocol(e.target.value as typeof cameraProtocol)}><option value="unknown">Not known yet</option><option value="rtsp">RTSP stream</option><option value="onvif">ONVIF-supported device</option><option value="vendor_api">Vendor API / NVR SDK</option><option value="https_gateway">HTTPS / HLS / WebRTC gateway</option></select></label>
+            <label>Network transport<select value={cameraTransport} onChange={e => setCameraTransport(e.target.value as typeof cameraTransport)}><option value="ethernet">Ethernet / wired LAN</option><option value="wifi">Wi-Fi</option><option value="other">Other / bridge</option></select></label>
+          </div>
+          <small>Do not enter stream URLs, passwords, tokens, or private keys here. This profile records intended compatibility only; the camera remains unconnected until a customer-approved adapter validates the stream.</small>
+        </div>}
         {resourceType !== 'site' && !siteId && <p className="notice notice-error">Choose an authorized site before creating a camera or connector.</p>}
         <div className="ops-form-actions"><button type="button" className="outline-button" onClick={() => setCreateOpen(false)}>Cancel</button><button className="primary-button" disabled={busy || (resourceType !== 'site' && !siteId)}><Plus size={15}/> Create metadata</button></div>
         <small>Only metadata is created. Camera connectivity and connector enrollment are separate workflows.</small>
@@ -240,7 +262,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
         {enrollmentChallenge && <div className="ops-challenge-result"><strong>Challenge created · expires {safeDate(enrollmentChallenge.expiresAt)}</strong><small>Enrollment ID</small><code>{enrollmentChallenge.enrollmentId}</code><small>One-time challenge — copy it to the approved connector enrollment procedure</small><textarea readOnly rows={3} value={enrollmentChallenge.challenge} aria-label="One-time enrollment challenge"/><small>Public-key thumbprint: <code>{enrollmentChallenge.keyThumbprint}</code></small><p>Keep the challenge available only to the authorized enrollment operator. The server stores its hash and will reject expired or reused challenges.</p></div>}
       </section>}
       {section === 'events' ? events.length ? <div className="ops-event-list">{events.map(item => <article className="ops-event-row" key={item.id}><span className="ops-event-icon"><Activity size={16}/></span><div><strong>{item.eventType.replaceAll('_',' ')}</strong><small>{safeDate(item.recordedAt)} · {item.actorId || 'System actor'}</small><code>{item.id}</code></div><span className="ops-event-site">{item.siteId}</span></article>)}</div> : <div className="dashboard-empty"><CircleAlert size={23}/><strong>No operational events loaded</strong><p>Connect with an authorized token and select a site to read the scoped event timeline.</p></div> :
-        currentResources.length ? <div className="ops-resource-list">{currentResources.map(item => <article className="ops-resource-row" key={item.id}><span className="ops-resource-icon">{section === 'sites' ? <Database size={17}/> : section === 'cameras' ? <Camera size={17}/> : <WifiOff size={17}/>}</span><div className="ops-resource-main"><strong>{item.name}</strong><small>{item.id}{item.siteId ? ` · site ${item.siteId}` : ''}</small><small>Created {safeDate(item.createdAt)}</small></div><span className={`capability-state ${item.status === 'active' || item.status === 'enrolled' ? 'is-available' : 'is-pending'}`}>{item.status.replaceAll('_',' ')}</span></article>)}</div> :
+        currentResources.length ? <div className="ops-resource-list">{currentResources.map(item => <article className="ops-resource-row" key={item.id}><span className="ops-resource-icon">{section === 'sites' ? <Database size={17}/> : section === 'cameras' ? <Camera size={17}/> : <WifiOff size={17}/>}</span><div className="ops-resource-main"><strong>{item.name}</strong><small>{item.id}{item.siteId ? ` · site ${item.siteId}` : ''}</small>{section === 'cameras' && <small>{String(item.metadata?.vendor || 'Vendor unknown')} · {String(item.metadata?.model || 'Model unknown')} · {String(item.metadata?.protocol || 'Protocol unknown')} · {String(item.metadata?.transport || 'transport unknown')}</small>}<small>Created {safeDate(item.createdAt)}</small></div><span className={`capability-state ${item.status === 'active' || item.status === 'enrolled' ? 'is-available' : 'is-pending'}`}>{item.status.replaceAll('_',' ')}</span></article>)}</div> :
         <div className="dashboard-empty"><Database size={23}/><strong>No records to display</strong><p>Connect with a trusted token, then refresh to load authorized inventory. API configuration and authorization are required.</p></div>}
     </div>
     <p className="ops-disclaimer">Security boundary: this workspace never accepts camera stream URLs, credentials, private keys, or arbitrary recorder endpoints. Connector enrollment and recording assurance remain separate, explicitly authorized operations.</p>
