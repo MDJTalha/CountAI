@@ -94,7 +94,7 @@ test('tenant-scoped APIs fail closed until trusted authentication is configured'
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), {
     error: 'tenant_api_not_enabled',
-    message: 'Tenant-scoped SPAIS APIs are disabled until trusted authentication, authorization and persistence are configured.'
+    message: 'Configure trusted bearer-token verification and SPAIS_EVENTS_DB_PATH before using tenant resource APIs.'
   });
 });
 
