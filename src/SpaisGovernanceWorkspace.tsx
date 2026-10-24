@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { AlertCircle, CheckCircle2, ClipboardCheck, RefreshCw, ShieldCheck } from 'lucide-react';
 import { SpaisLearningLab } from './SpaisLearningLab';
@@ -67,6 +67,18 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
   const [coverageAssessment, setCoverageAssessment] = useState<CoverageAssessment | null>(null);
 
   const approvedSops = sops.filter(sop => sop.status === 'approved');
+  const scopeKey = JSON.stringify([organizationId.trim(), siteId.trim(), token.trim()]);
+  const currentScopeKey = useRef(scopeKey);
+  currentScopeKey.current = scopeKey;
+
+  function invalidateScopedData() {
+    setIncidents([]);
+    setSops([]);
+    setCoverageAssessment(null);
+    setTransitionNotes({});
+    setMessage('Connection scope changed. Refresh to load records for the current organization, site, and token.');
+    setIsError(false);
+  }
 
   if (!visible) return null;
 
@@ -82,6 +94,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
       setMessage('Enter organization ID, active site ID, and a trusted bearer token to connect.');
       return;
     }
+    const requestScope = scopeKey;
     setBusy(true); setMessage('Loading authorized incident and SOP records…'); setIsError(false);
     try {
       const query = `?siteId=${encodeURIComponent(siteId.trim())}&limit=100`;
@@ -93,6 +106,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
         readResponse<{ incidents: Incident[] }>(incidentResponse),
         readResponse<{ sops: Sop[] }>(sopResponse)
       ]);
+      if (requestScope !== currentScopeKey.current) return;
       setIncidents(incidentBody.incidents);
       setSops(sopBody.sops);
       setMessage(`Loaded ${incidentBody.incidents.length} incident(s) and ${sopBody.sops.length} SOP version(s) for the selected site.`);
@@ -111,6 +125,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
       setIsError(true); setMessage('The recording-assurance end time must be after the start time.'); return;
     }
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false); setMessage('Evaluating signed coverage reports…');
     try {
       const query = new URLSearchParams({
@@ -120,6 +135,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
         headers: authHeaders(), cache: 'no-store'
       });
       const body = await readResponse<{ assessment: CoverageAssessment }>(response);
+      if (requestScope !== currentScopeKey.current) return;
       setCoverageAssessment(body.assessment);
       setMessage(`Assessment returned: ${body.assessment.assessment.replaceAll('_', ' ')}. Connector reports are not independently verified recording proof.`);
     } catch (error) {
@@ -129,6 +145,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
   }
   async function submitIncident(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false);
     try {
       const response = await fetch(basePath('incidents'), {
@@ -136,6 +153,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
         body: JSON.stringify({ siteId: siteId.trim(), title: incidentTitle.trim(), description: incidentDescription.trim(), severity: incidentSeverity, source: 'operator', ...(incidentSopVersionId ? { sopVersionId: incidentSopVersionId } : {}) })
       });
       await readResponse<{ incident: Incident }>(response);
+      if (requestScope !== currentScopeKey.current) return;
       setIncidentTitle(''); setIncidentDescription(''); setIncidentSopVersionId('');
       await refresh();
     } catch (error) {
@@ -145,12 +163,14 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
   async function transitionIncident(incident: Incident, status: Incident['status']) {
     const note = (transitionNotes[`incident:${incident.id}`] || '').trim();
     if (note.length < 3) { setIsError(true); setMessage('Add a transition note of at least 3 characters before changing incident status.'); return; }
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false);
     try {
       const response = await fetch(`${basePath('incidents')}/${encodeURIComponent(incident.id)}?siteId=${encodeURIComponent(siteId.trim())}`, {
         method: 'PATCH', headers: authHeaders(true), body: JSON.stringify({ status, note })
       });
       await readResponse<{ incident: Incident }>(response);
+      if (requestScope !== currentScopeKey.current) return;
       setTransitionNotes(current => ({ ...current, [`incident:${incident.id}`]: '' }));
       await refresh();
     } catch (error) { setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not update incident.'); }
@@ -158,6 +178,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
   }
   async function submitSop(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false);
     try {
       const response = await fetch(basePath('sops'), {
@@ -165,6 +186,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
         body: JSON.stringify({ siteId: siteId.trim(), policyId: sopPolicyId.trim(), title: sopTitle.trim(), content: sopContent.trim(), category: sopCategory })
       });
       await readResponse<{ sop: Sop }>(response);
+      if (requestScope !== currentScopeKey.current) return;
       setSopTitle(''); setSopContent('');
       await refresh();
     } catch (error) { setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not create SOP version.'); }
@@ -173,12 +195,14 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
   async function transitionSop(sop: Sop, status: Sop['status']) {
     const note = (transitionNotes[`sop:${sop.id}`] || '').trim();
     if (note.length < 3) { setIsError(true); setMessage('Add a transition note of at least 3 characters before changing SOP status.'); return; }
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false);
     try {
       const response = await fetch(`${basePath('sops')}/${encodeURIComponent(sop.id)}?siteId=${encodeURIComponent(siteId.trim())}`, {
         method: 'PATCH', headers: authHeaders(true), body: JSON.stringify({ status, note })
       });
       await readResponse<{ sop: Sop }>(response);
+      if (requestScope !== currentScopeKey.current) return;
       setTransitionNotes(current => ({ ...current, [`sop:${sop.id}`]: '' }));
       await refresh();
     } catch (error) { setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not update SOP status.'); }
@@ -199,9 +223,9 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
     <article className="dashboard-card governance-connect">
       <div className="dashboard-card-head"><h2>Secure connection</h2><div className="governance-header-actions"><button className="outline-button" type="button" onClick={() => void refresh()} disabled={busy}><RefreshCw size={15}/>{busy ? 'Working…' : 'Refresh records'}</button><button className="subtle-button" type="button" onClick={() => { setToken(''); setIncidents([]); setSops([]); setCoverageAssessment(null); setMessage('Connection cleared. The bearer token was removed from component memory.'); setIsError(false); }}>Clear token</button></div></div>
       <div className="governance-form-grid">
-        <label>Organization ID<input value={organizationId} onChange={event => setOrganizationId(event.target.value)} autoComplete="off" placeholder="Organization identifier"/></label>
-        <label>Active site ID<input value={siteId} onChange={event => setSiteId(event.target.value)} autoComplete="off" placeholder="Site identifier"/></label>
-        <label className="governance-token">Trusted bearer token<input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Token held in memory only"/></label>
+        <label>Organization ID<input value={organizationId} onChange={event => { setOrganizationId(event.target.value); setSiteId(''); invalidateScopedData(); }} autoComplete="off" placeholder="Organization identifier"/></label>
+        <label>Active site ID<input value={siteId} onChange={event => { setSiteId(event.target.value); invalidateScopedData(); }} autoComplete="off" placeholder="Site identifier"/></label>
+        <label className="governance-token">Trusted bearer token<input type="password" value={token} onChange={event => { setToken(event.target.value); invalidateScopedData(); }} autoComplete="off" spellCheck={false} placeholder="Token held in memory only"/></label>
       </div>
       <p className={`governance-notice ${isError ? 'is-error' : ''}`} role="status">{isError ? <AlertCircle size={16}/> : <CheckCircle2 size={16}/>}<span>{message || 'Token is not saved to local storage, IndexedDB, URL, or browser history. Clear it when you finish.'}</span></p>
     </article>
