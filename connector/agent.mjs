@@ -3,7 +3,7 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalizeConnectorTelemetry } from '../server/spais/connectorTelemetry.mjs';
-import { acknowledgeTelemetry, enqueueTelemetry, getTelemetryQueueStatus } from './offlineQueue.mjs';
+import { acknowledgeTelemetry, enqueueTelemetry, getTelemetryQueueStatus, readTelemetryQueue } from './offlineQueue.mjs';
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_RECORDER_RESPONSE_BYTES = 64 * 1024;
