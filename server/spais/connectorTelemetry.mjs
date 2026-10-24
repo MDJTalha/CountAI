@@ -150,6 +150,12 @@ export function createConnectorTelemetryReceiver({
       const signedAt = Date.parse(timestamp);
       if (Math.abs(now().getTime() - signedAt) > maxClockSkewSeconds * 1000) throw fail('telemetry_timestamp_out_of_window');
       const payloadJson = validatePayload(eventType, payload);
+      if (eventType === 'camera.health' || eventType === 'recorder.recording_coverage') {
+        const camera = await resourceStore.get({
+          organizationId, resourceType: 'camera', resourceId: payload.cameraId, siteId
+        });
+        if (!camera) throw fail('telemetry_camera_scope_mismatch');
+      }
       const identity = await resourceStore.getConnectorIdentity({ organizationId, siteId, connectorId });
       if (!identity) throw fail('connector_identity_not_active');
 
