@@ -311,7 +311,7 @@ async function main() {
   while (!stopping) {
     try {
       const result = await runConnectorOnce({ ...config, privateKey });
-      process.stdout.write(JSON.stringify({ acceptedCount: result.acceptedCount, observedAt: result.observedAt }) + '\n');
+      process.stdout.write(JSON.stringify({ acceptedCount: result.acceptedCount, queuedCount: result.queuedCount ?? 0, deliveryError: result.deliveryError ?? null, deliveryMode: result.deliveryMode || 'direct', observedAt: result.observedAt }) + '\n');
     } catch (error) {
       // Never print tokens, payloads, private-key material, or full URLs that may contain credentials.
       process.stderr.write(JSON.stringify({ error: error.code || 'connector_run_failed' }) + '\n');
