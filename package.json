@@ -23,7 +23,8 @@
     "test:analytics": "node --test tests/sessionAnalytics.test.mjs",
     "test:overlay-labels": "node --test tests/detectionOverlay.test.mjs",
     "test:live-sessions": "node --test tests/liveSessions.test.mjs",
-    "test:operational-events-api": "node --test tests/operationalEventsApi.test.mjs"
+    "test:operational-events-api": "node --test tests/operationalEventsApi.test.mjs",
+    "test:spais-resources-api": "node --test tests/spaisResourcesApi.test.mjs"
   },
   "dependencies": {
     "@tensorflow-models/coco-ssd": "^2.2.3",
