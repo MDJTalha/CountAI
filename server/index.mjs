@@ -747,6 +747,7 @@ const server = createServer(async (req, res) => {
       return json(res, 201, { source });
     } catch (error) {
       if (error.code === 'invalid_learning_source') return json(res, 400, { error: error.code, details: error.validationErrors || [] });
+      if (error.code === 'document_text_too_large') return json(res, 413, { error: error.code });
       if (['invalid_or_oversized_file_payload','file_signature_mismatch'].includes(error.code)) return json(res, 400, { error: error.code });
       console.error('CountAI learning source request failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'learning_source_request_failed' });
