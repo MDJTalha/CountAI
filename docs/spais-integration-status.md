@@ -50,6 +50,16 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - The agent accepts only configured endpoint URLs, rejects URL-embedded credentials and secret-like query parameters, supports explicit HTTP opt-in for customer-approved local recorder endpoints, and never logs credentials or payloads.
 - Recorder coverage reports remain `reported_not_independently_verified`. This generic HTTP adapter is not a vendor-specific ONVIF/NVR integration and is not pilot-accepted or production-approved until customer lab validation.
 
+## Incident lifecycle API — implementation branch, awaiting CI and review
+- Added authenticated, site-scoped incident create/read/list and lifecycle-transition endpoints under `/api/v1/organizations/:organizationId/incidents`.
+- Uses trusted bearer identity and server-enforced `incident:read` / `incident:manage` permissions; site must exist and be active.
+- Persists incidents in SQLite with an audit record written in the same transaction as creation or transition.
+- Lifecycle is explicit: open → acknowledged → investigating → resolved; resolved incidents may be reopened with a required operator note. Invalid transitions fail with HTTP 409.
+- Strict request schemas reject caller-supplied organization/actor IDs and any caller-supplied evidence-verification state.
+- Recorder-coverage-origin incidents are labelled `reported_not_independently_verified`; the lifecycle API cannot promote signed reports to independently verified recording evidence.
+- Added HTTP integration coverage for authentication, tenant/site/permission denial, schema spoofing, transition ordering, reopen, and audit history. The full CI run for this branch is still required before considering this implemented on main.
+- This is a single-host SQLite pilot foundation, not a production incident-management deployment; backup/retention operations, notification delivery, deduplication policy, and customer acceptance remain open.
+
 ## Not yet implemented or verified
 - Production identity-provider integration, key rotation and operational secret management.
 - Deployment-specific OIDC identity-provider configuration, identity lifecycle operations, emergency key revocation procedures and operational secret management.
@@ -59,7 +69,7 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Connector public-key rotation is atomic: the prior enrolled key is revoked in the same transaction that activates the replacement. Explicit connector revocation invalidates active/pending enrollments and is audited; telemetry fails closed afterward.
 - Production-grade rate limiting/abuse controls, operational key management, and deployment monitoring.
 - Vendor-specific ONVIF/NVR adapters, independently verified recorder-side recording coverage evidence, durable offline store-and-forward, and customer lab acceptance.
-- Incident lifecycle and SOP/policy governance.
+- SOP/policy governance.
 - Governed model candidate evaluation, approval and promotion.
 - Real-camera lab or customer pilot acceptance.
 
