@@ -1,8 +1,8 @@
-import { Activity, ArrowRight, BarChart3, Camera, ImagePlus, Layers3, ShieldCheck, Sparkles } from 'lucide-react';
+import { Activity, ArrowRight, BarChart3, Camera, ImagePlus, Layers3, ShieldCheck, Sparkles, Server, BrainCircuit } from 'lucide-react';
 import type { CountSession } from './types/counting';
 import { SpaisSystemStatus } from './SpaisSystemStatus';
 
-type Workspace = 'dashboard' | 'live' | 'photo' | 'history' | 'analytics';
+type Workspace = 'dashboard' | 'live' | 'photo' | 'history' | 'analytics' | 'operations' | 'governance';
 type Props = {
   sessions: CountSession[];
   onNavigate: (workspace: Workspace) => void;
@@ -53,7 +53,7 @@ export function DashboardHome({ sessions, onNavigate, onOpenSession }: Props) {
       </article>
       <article className="dashboard-card dashboard-action">
         <div className="dashboard-action-icon"><ImagePlus size={20}/></div>
-        <h2>Photo count & review</h2>
+        <h2>Photo count &amp; review</h2>
         <p>Analyze a photo locally, review detections, and correct labels before exporting your results.</p>
         <button className="outline-button" onClick={() => onNavigate('photo')}>Count a photo <ArrowRight size={15}/></button>
       </article>
@@ -62,6 +62,18 @@ export function DashboardHome({ sessions, onNavigate, onOpenSession }: Props) {
         <h2>Analytics</h2>
         <p>Review saved photo activity, category totals, and correction history over time.</p>
         <button className="outline-button" onClick={() => onNavigate('analytics')}>View analytics <ArrowRight size={15}/></button>
+      </article>
+      <article className="dashboard-card dashboard-action">
+        <div className="dashboard-action-icon"><Server size={20}/></div>
+        <h2>Sites &amp; cameras</h2>
+        <p>Inspect authorized site inventory, camera metadata, connector records and operational events.</p>
+        <button className="outline-button" onClick={() => onNavigate('operations')}>Open operations <ArrowRight size={15}/></button>
+      </article>
+      <article className="dashboard-card dashboard-action">
+        <div className="dashboard-action-icon"><BrainCircuit size={20}/></div>
+        <h2>AI &amp; model governance</h2>
+        <p>Review learning proposals and signed offline evaluations. The current TensorFlow.js detector runs in-browser; training and production model promotion are not automated.</p>
+        <button className="outline-button" onClick={() => onNavigate('governance')}>Open model governance <ArrowRight size={15}/></button>
       </article>
 
       <SpaisSystemStatus />
@@ -85,15 +97,17 @@ export function DashboardHome({ sessions, onNavigate, onOpenSession }: Props) {
       </article>
       <article className="dashboard-card dashboard-side" aria-labelledby="spais-readiness-title">
         <div className="dashboard-card-head"><h2 id="spais-readiness-title">SPAIS capability readiness</h2><Activity size={17} color="#3b8c76"/></div>
-        <div className="dashboard-stat-row"><span>Photo detection & review</span><strong className="capability-state is-available">Available</strong></div>
+        <div className="dashboard-stat-row"><span>Photo detection &amp; review</span><strong className="capability-state is-available">Available</strong></div>
         <div className="dashboard-stat-row"><span>Browser-attached live camera</span><strong className="capability-state is-available">Available</strong></div>
         <div className="dashboard-stat-row"><span>Local photo history</span><strong className="capability-state is-available">{validSessions.length ? 'Available' : 'No records yet'}</strong></div>
         <div className="dashboard-stat-row"><span>Customer edge connector</span><strong className="capability-state is-pending">Not connected</strong></div>
         <div className="dashboard-stat-row"><span>NVR recording assurance</span><strong className="capability-state is-pending">Not verified</strong></div>
         <div className="dashboard-stat-row"><span>Incident lifecycle API</span><strong className="capability-state is-configurable">Backend implemented</strong></div>
-        <div className="dashboard-stat-row"><span>SOP versioning & approval API</span><strong className="capability-state is-configurable">Backend implemented</strong></div>
-        <div className="dashboard-stat-row"><span>Governed autonomous learning</span><strong className="capability-state is-planned">Planned</strong></div>
-        <p className="capability-disclaimer">Backend implementation does not mean the service is configured or ready for operators. Incident and SOP APIs require trusted identity and persistent storage; camera and recorder status require customer-controlled evidence.</p>
+        <div className="dashboard-stat-row"><span>SOP versioning &amp; approval API</span><strong className="capability-state is-configurable">Backend implemented</strong></div>
+        <div className="dashboard-stat-row"><span>Learning proposal registry</span><strong className="capability-state is-configurable">API implemented</strong></div>
+        <div className="dashboard-stat-row"><span>Automated model training</span><strong className="capability-state is-planned">Not implemented</strong></div>
+        <div className="dashboard-stat-row"><span>Production model promotion</span><strong className="capability-state is-planned">Not implemented</strong></div>
+        <p className="capability-disclaimer">Backend implementation does not mean the service is configured or ready for operators. Incident and SOP APIs require trusted identity and persistent storage; camera and recorder status require customer-controlled evidence. Learning evaluation reports are attestations, not proof of training or deployment.</p>
       </article>
     </div>
   </section>;
