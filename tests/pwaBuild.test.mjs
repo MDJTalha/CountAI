@@ -21,9 +21,9 @@ test('production build emits the app shell, manifest and service worker', async 
   assert.equal(parsedManifest.scope, '/');
 });
 
-test('large local detector chunk is emitted separately and excluded from install precache', async () => {
+test('CCTV-first production build does not ship the legacy local photo detector', async () => {
   const names = await readdir(assets);
-  assert.ok(names.some(name => /^localDetector-.+\.js$/.test(name)), 'expected a hashed local detector chunk');
+  assert.ok(!names.some(name => /^localDetector-.+\.js$/.test(name)), 'legacy photo detector must not be shipped in the CCTV-first bundle');
 
   const worker = await readFile(new URL('sw.js', dist), 'utf8');
   const precacheStart = worker.indexOf('precacheAndRoute(');
