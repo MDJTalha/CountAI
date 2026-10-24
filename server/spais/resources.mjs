@@ -511,10 +511,16 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
       }
       const database = await getDatabase();
       const row = database.prepare(`
-        SELECT public_key_jwk, key_thumbprint, completed_at
-        FROM spais_connector_enrollments
-        WHERE organization_id = ? AND site_id = ? AND connector_id = ? AND status = 'completed'
-        ORDER BY completed_at DESC LIMIT 1
+        SELECT e.public_key_jwk, e.key_thumbprint, e.completed_at
+        FROM spais_connector_enrollments e
+        JOIN spais_resources r
+          ON r.organization_id = e.organization_id
+         AND r.resource_type = 'connector'
+         AND r.resource_id = e.connector_id
+         AND r.site_id = e.site_id
+        WHERE e.organization_id = ? AND e.site_id = ? AND e.connector_id = ?
+          AND e.status = 'completed' AND r.status = 'enrolled'
+        ORDER BY e.completed_at DESC LIMIT 1
       `).get(organizationId, siteId, connectorId);
       if (!row) return null;
       return {
