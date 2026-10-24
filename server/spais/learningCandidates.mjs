@@ -79,10 +79,38 @@ export function createSqliteLearningCandidateStore(databasePath = process.env.SP
             created_by TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            last_note TEXT
+            last_note TEXT,
+            evaluation_status TEXT NOT NULL DEFAULT 'not_run',
+            latest_evaluation_id TEXT
           );
           CREATE INDEX IF NOT EXISTS idx_spais_model_candidates_scope
             ON spais_model_candidates (organization_id, site_id, sequence DESC);
+          CREATE TABLE IF NOT EXISTS spais_model_evaluations (
+            sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL UNIQUE,
+            organization_id TEXT NOT NULL,
+            site_id TEXT NOT NULL,
+            candidate_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            nonce TEXT NOT NULL,
+            artifact_sha256 TEXT NOT NULL,
+            evaluation_dataset_sha256 TEXT NOT NULL,
+            evaluator_version TEXT NOT NULL,
+            evaluator_key_id TEXT NOT NULL,
+            evaluated_at TEXT NOT NULL,
+            received_at TEXT NOT NULL,
+            sample_count INTEGER NOT NULL,
+            precision REAL NOT NULL,
+            recall REAL NOT NULL,
+            false_positive_rate REAL NOT NULL,
+            result TEXT NOT NULL CHECK (result IN ('passed','failed')),
+            thresholds_json TEXT NOT NULL,
+            attestation_sha256 TEXT NOT NULL,
+            UNIQUE (organization_id, site_id, run_id),
+            UNIQUE (organization_id, site_id, nonce)
+          );
+          CREATE INDEX IF NOT EXISTS idx_spais_model_evaluations_candidate
+            ON spais_model_evaluations (organization_id, site_id, candidate_id, sequence DESC);
           CREATE TABLE IF NOT EXISTS spais_audit_events (
             sequence INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id TEXT NOT NULL UNIQUE,
@@ -98,6 +126,9 @@ export function createSqliteLearningCandidateStore(databasePath = process.env.SP
           CREATE INDEX IF NOT EXISTS idx_spais_audit_org_sequence ON spais_audit_events (organization_id, sequence DESC);
           CREATE INDEX IF NOT EXISTS idx_spais_audit_org_site_sequence ON spais_audit_events (organization_id, site_id, sequence DESC);
         `);
+        const candidateColumns = db.prepare('PRAGMA table_info(spais_model_candidates)').all();
+        if (!candidateColumns.some(column => column.name === 'evaluation_status')) db.exec("ALTER TABLE spais_model_candidates ADD COLUMN evaluation_status TEXT NOT NULL DEFAULT 'not_run'");
+        if (!candidateColumns.some(column => column.name === 'latest_evaluation_id')) db.exec('ALTER TABLE spais_model_candidates ADD COLUMN latest_evaluation_id TEXT');
         return db;
       })().catch(error => { databasePromise = undefined; throw error; });
     }
@@ -113,7 +144,8 @@ export function createSqliteLearningCandidateStore(databasePath = process.env.SP
       artifactSha256: row.artifact_sha256, evaluationDatasetSha256: row.evaluation_dataset_sha256,
       evaluationPlan: JSON.parse(row.evaluation_plan_json), status: row.status,
       createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
-      lastNote: row.last_note
+      lastNote: row.last_note,
+      evaluationStatus: row.evaluation_status || 'not_run', latestEvaluationId: row.latest_evaluation_id || null
     };
   }
 
@@ -189,6 +221,70 @@ export function createSqliteLearningCandidateStore(databasePath = process.env.SP
         db.exec('COMMIT;');
         return after;
       } catch (error) { try { db.exec('ROLLBACK;'); } catch {} throw error; }
+    },
+    async listEvaluations({ organizationId, siteId, candidateId, limit = 100 }) {
+      if (![organizationId, siteId, candidateId].every(isResourceId)) throw fail('invalid_learning_evaluation_query');
+      const db = await getDatabase();
+      const bounded = Number.isInteger(limit) ? Math.max(1, Math.min(100, limit)) : 100;
+      return db.prepare('SELECT * FROM spais_model_evaluations WHERE organization_id = ? AND site_id = ? AND candidate_id = ? ORDER BY sequence DESC LIMIT ?')
+        .all(organizationId, siteId, candidateId, bounded).map(row => ({
+          contractVersion: 1, id: row.id, organizationId: row.organization_id, siteId: row.site_id,
+          candidateId: row.candidate_id, runId: row.run_id, artifactSha256: row.artifact_sha256,
+          evaluationDatasetSha256: row.evaluation_dataset_sha256, evaluatorVersion: row.evaluator_version,
+          evaluatorKeyId: row.evaluator_key_id, evaluatedAt: row.evaluated_at, receivedAt: row.received_at,
+          sampleCount: row.sample_count, precision: row.precision, recall: row.recall,
+          falsePositiveRate: row.false_positive_rate, result: row.result,
+          thresholds: JSON.parse(row.thresholds_json), attestationSha256: row.attestation_sha256
+        }));
+    },
+    async recordEvaluation({ organizationId, siteId, candidateId, actorId, report, verification, now = new Date() }) {
+      if (![organizationId, siteId, candidateId, actorId].every(isResourceId)) throw fail('invalid_trusted_scope');
+      if (!verification?.valid || !['passed', 'failed'].includes(verification.result)) throw fail('invalid_evaluation_attestation');
+      const db = await getDatabase();
+      const timestamp = now.toISOString();
+      const evaluationId = randomUUID();
+      db.exec('BEGIN IMMEDIATE;');
+      try {
+        const row = db.prepare('SELECT * FROM spais_model_candidates WHERE organization_id = ? AND site_id = ? AND id = ?')
+          .get(organizationId, siteId, candidateId);
+        if (!row) throw fail('learning_candidate_not_found');
+        const candidate = toCandidate(row);
+        if (candidate.status !== 'evaluation_pending') throw fail('learning_candidate_not_evaluation_pending');
+        if (candidate.artifactSha256 !== report.artifactSha256.toLowerCase() ||
+            candidate.evaluationDatasetSha256 !== report.evaluationDatasetSha256.toLowerCase()) {
+          throw fail('learning_evaluation_digest_mismatch');
+        }
+        db.prepare(`
+          INSERT INTO spais_model_evaluations
+            (id, organization_id, site_id, candidate_id, run_id, nonce, artifact_sha256,
+             evaluation_dataset_sha256, evaluator_version, evaluator_key_id, evaluated_at,
+             received_at, sample_count, precision, recall, false_positive_rate, result,
+             thresholds_json, attestation_sha256)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          evaluationId, organizationId, siteId, candidateId, report.runId, report.nonce,
+          report.artifactSha256.toLowerCase(), report.evaluationDatasetSha256.toLowerCase(),
+          report.evaluatorVersion.trim(), verification.evaluatorKeyId, new Date(Date.parse(report.evaluatedAt)).toISOString(),
+          timestamp, report.sampleCount, report.precision, report.recall, report.falsePositiveRate,
+          verification.result, JSON.stringify(verification.thresholds), verification.attestationSha256
+        );
+        db.prepare('UPDATE spais_model_candidates SET evaluation_status = ?, latest_evaluation_id = ?, updated_at = ? WHERE organization_id = ? AND site_id = ? AND id = ?')
+          .run(verification.result, evaluationId, timestamp, organizationId, siteId, candidateId);
+        audit(db, candidate, actorId, 'model_candidate.evaluation_' + verification.result, timestamp, {
+          evaluationId, runId: report.runId, result: verification.result,
+          sampleCount: report.sampleCount, precision: report.precision, recall: report.recall,
+          falsePositiveRate: report.falsePositiveRate, thresholds: verification.thresholds,
+          evaluatorKeyId: verification.evaluatorKeyId, attestationSha256: verification.attestationSha256
+        });
+        db.exec('COMMIT;');
+        return (await this.listEvaluations({ organizationId, siteId, candidateId, limit: 1 }))[0];
+      } catch (error) {
+        try { db.exec('ROLLBACK;'); } catch {}
+        if (error.code === 'ERR_SQLITE_ERROR' && /UNIQUE constraint failed/.test(error.message)) {
+          throw fail('learning_evaluation_replay_detected');
+        }
+        throw error;
+      }
     },
     async close() {
       if (!databasePromise) return;

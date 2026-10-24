@@ -39,6 +39,7 @@ const ALLOWED_ACTIONS = new Set([
   "model:read",
   "model:propose",
   "model:approve",
+  "model:evaluate",
   "audit:read"
 ]);
 
@@ -61,7 +62,7 @@ export function getSpaisContractManifest({ authenticationConfigured = false, ten
       "Browser-local sessions are not server-side tenant records.",
       "Recorder health requires recorder-side evidence; browser camera status is not recording assurance.",
       "Report-based recording assessment computes reported coverage ratios and window continuity from signed connector reports; it is not independent proof of recording.",
-      "Learning candidate routes register and review metadata for offline evaluation only; they do not train, evaluate, or promote production models."
+      "Learning candidate routes register metadata and verify signed offline evaluation reports against configured thresholds; they do not run training/evaluation or promote production models."
     ]
   });
 }
