@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [entrypoint, app, operations, styles, html, readme] = await Promise.all([
+const [entrypoint, app, operations, learning, styles, html, readme] = await Promise.all([
   readFile(new URL('../src/main.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/CctvFirstApp.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/SpaisOperationsWorkspace.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/SpaisLearningLab.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/CctvFirstApp.css', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../README.md', import.meta.url), 'utf8')
@@ -58,4 +59,13 @@ test('documentation describes the CCTV-first product boundary', () => {
   assert.match(readme, /RTSP/i);
   assert.match(readme, /Bluetooth/i);
   assert.match(readme, /not proof that footage exists|not independently verified|not proof that a camera is online/i);
+});
+
+test('autonomous learning workbench accepts authorized sources but does not claim training or live recording is complete', () => {
+  for (const kind of ['document', 'image', 'observation', 'video_recording']) assert.ok(learning.includes(`value="${kind}"`));
+  assert.match(learning, /consentConfirmed: true/);
+  assert.match(learning, /8 MB/);
+  assert.match(learning, /human review\/annotation is still required/);
+  assert.match(learning, /Direct continuous capture from network CCTV requires the stream adapter/);
+  assert.match(readme, /does not yet extract text from PDFs, run image\/video inference/);
 });
