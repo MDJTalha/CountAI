@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [entrypoint, app, styles, html, readme] = await Promise.all([
+const [entrypoint, app, operations, styles, html, readme] = await Promise.all([
   readFile(new URL('../src/main.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/CctvFirstApp.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/SpaisOperationsWorkspace.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/CctvFirstApp.css', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../README.md', import.meta.url), 'utf8')
@@ -33,10 +34,10 @@ test('live view clearly refuses to claim a feed until a stream adapter is connec
 test('camera registration captures compatibility metadata without accepting secrets', () => {
   assert.match(readme, /metadata/i);
   assert.match(readme, /RTSP/i);
-  assert.match(app, /cameraProtocol/);
-  assert.match(app, /cameraTransport/);
-  assert.match(app, /Do not enter stream URLs, passwords, tokens, or private keys here/);
-  assert.match(app, /integrationState: 'not_configured'/);
+  assert.match(operations, /cameraProtocol/);
+  assert.match(operations, /cameraTransport/);
+  assert.match(operations, /Do not enter stream URLs, passwords, tokens, or private keys here/);
+  assert.match(operations, /integrationState: 'not_configured'/);
 });
 
 test('camera and recorder integration targets are represented honestly', () => {
