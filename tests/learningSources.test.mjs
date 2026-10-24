@@ -71,3 +71,34 @@ test('learning source validation rejects oversized files and unsupported secret-
     apiKey: 'must-not-be-supplied'
   }).errors.includes('unsupported_field:apiKey'));
 });
+
+test('learning source deletion removes tenant-scoped records and retention expiry is opt-in', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'countai-learning-delete-'));
+  try {
+    const store = createSqliteLearningSourceStore({
+      databasePath: join(dir, 'events.sqlite'),
+      mediaDirectory: join(dir, 'media')
+    });
+    const source = await store.create({
+      organizationId: 'org-1', principal: { subjectId: 'operator-1' },
+      input: {
+        siteId: 'site-1', sourceType: 'observation', title: 'Temporary observation',
+        contentText: 'Delete after review', consentConfirmed: true
+      }
+    });
+    assert.equal((await store.delete({
+      organizationId: 'org-2', siteId: 'site-1', sourceId: source.id, actorId: 'operator-2'
+    })).deleted, false);
+    assert.equal((await store.list({ organizationId: 'org-1', siteId: 'site-1' })).length, 1);
+    assert.equal((await store.purgeExpired({ retentionDays: 0 })).disabled, true);
+    const expired = await store.purgeExpired({
+      retentionDays: 1,
+      now: Date.now() + 2 * 24 * 60 * 60 * 1000
+    });
+    assert.equal(expired.deleted, 1);
+    assert.equal((await store.list({ organizationId: 'org-1', siteId: 'site-1' })).length, 0);
+    await assert.rejects(() => store.purgeExpired({ retentionDays: 3651 }), /invalid_learning_source_retention/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
