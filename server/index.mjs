@@ -5,6 +5,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { getSpaisContractManifest, authorizeSpaisAction, isResourceId } from './spais/contracts.mjs';
 import { verifySpaisBearerTokenAsync } from './spais/authOidc.mjs';
 import { createSqliteSpaisResourceStore, validateSpaisResourceInput, validateSpaisResourcePatch } from './spais/resources.mjs';
+import { createConnectorTelemetryReceiver } from './spais/connectorTelemetry.mjs';
 import {
   createOperationalEvent,
   createOperationalEventStore,
@@ -18,6 +19,10 @@ const operationalEventStore = process.env.SPAIS_EVENTS_DB_PATH
   ? createSqliteOperationalEventStore(process.env.SPAIS_EVENTS_DB_PATH)
   : createOperationalEventStore();
 const resourceStore = createSqliteSpaisResourceStore(process.env.SPAIS_EVENTS_DB_PATH);
+const connectorTelemetryReceiver = createConnectorTelemetryReceiver({
+  databasePath: process.env.SPAIS_EVENTS_DB_PATH,
+  resourceStore
+});
 const spaisAuthConfigured = Boolean(
   (process.env.SPAIS_AUTH_JWKS_URL || process.env.SPAIS_AUTH_HS256_SECRET) &&
   process.env.SPAIS_AUTH_ISSUER && process.env.SPAIS_AUTH_AUDIENCE
@@ -81,6 +86,86 @@ const server = createServer(async (req, res) => {
       authenticationConfigured: spaisAuthConfigured,
       tenantResourceApiEnabled: spaisAuthConfigured && resourceStore.configured
     }));
+  }
+
+  // Operators can read recent telemetry only for an authorized organization/site/connector.
+  const connectorTelemetryReadRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/connectors\/([^/]+)\/telemetry$/);
+  if (connectorTelemetryReadRoute) {
+    if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
+    let organizationId;
+    let connectorId;
+    try {
+      organizationId = decodeURIComponent(connectorTelemetryReadRoute[1]);
+      connectorId = decodeURIComponent(connectorTelemetryReadRoute[2]);
+    } catch { return json(res, 400, { error: 'invalid_resource_id' }); }
+    const siteId = url.searchParams.get('siteId') || undefined;
+    if (!isResourceId(organizationId) || !isResourceId(connectorId)) return json(res, 400, { error: 'invalid_resource_id' });
+    if (!isResourceId(siteId)) return json(res, 400, { error: 'site_id_required' });
+    if (!spaisAuthConfigured || !resourceStore.configured || !connectorTelemetryReceiver.configured) {
+      return json(res, 503, { error: 'connector_telemetry_not_enabled' });
+    }
+    const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
+    if (!authentication.authenticated) {
+      return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
+    }
+    const authorization = authorizeSpaisAction({
+      principal: authentication.principal, organizationId, siteId, action: 'connector:read'
+    });
+    if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
+    try {
+      const connector = await resourceStore.get({ organizationId, resourceType: 'connector', resourceId: connectorId, siteId });
+      if (!connector || connector.status !== 'enrolled') return json(res, 404, { error: 'connector_not_found' });
+      const requestedLimit = Number(url.searchParams.get('limit') || 100);
+      const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 100;
+      const telemetry = await connectorTelemetryReceiver.list({ organizationId, siteId, connectorId, limit });
+      return json(res, 200, { organizationId, siteId, connectorId, telemetry, count: telemetry.length, limit });
+    } catch (error) {
+      if (error.code === 'invalid_telemetry_query') return json(res, 400, { error: error.code });
+      console.error('SPAIS connector telemetry read failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'connector_telemetry_read_failed' });
+    }
+  }
+
+  // Connector telemetry is authenticated by the enrolled connector's RSA key.
+  // These signed reports are not treated as independently verified recorder evidence.
+  const connectorTelemetryRoute = url.pathname.match(/^\/api\/v1\/connectors\/([^/]+)\/telemetry$/);
+  if (connectorTelemetryRoute) {
+    if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' }, { allow: 'POST' });
+    let connectorId;
+    try { connectorId = decodeURIComponent(connectorTelemetryRoute[1]); }
+    catch { return json(res, 400, { error: 'invalid_connector_id' }); }
+    if (!isResourceId(connectorId)) return json(res, 400, { error: 'invalid_connector_id' });
+    if (!resourceStore.configured || !connectorTelemetryReceiver.configured) {
+      return json(res, 503, { error: 'connector_telemetry_not_enabled' });
+    }
+    let input;
+    try { input = await readJsonBody(req, 16 * 1024); }
+    catch (error) {
+      const status = error.code === 'request_body_too_large' ? 413 : 400;
+      return json(res, status, { error: error.code || 'invalid_request_body' });
+    }
+    const allowedFields = new Set([
+      'organizationId', 'siteId', 'connectorId', 'timestamp', 'nonce', 'eventType', 'payload', 'signature'
+    ]);
+    if (!input || typeof input !== 'object' || Array.isArray(input) ||
+        Object.keys(input).some(key => !allowedFields.has(key)) || input.connectorId !== connectorId) {
+      return json(res, 400, { error: 'invalid_telemetry_envelope' });
+    }
+    try {
+      const receipt = await connectorTelemetryReceiver.accept(input);
+      return json(res, 202, { receipt });
+    } catch (error) {
+      if (error.code === 'invalid_telemetry_envelope' || error.code === 'invalid_telemetry_payload') {
+        return json(res, 400, { error: error.code });
+      }
+      if (error.code === 'telemetry_timestamp_out_of_window') return json(res, 401, { error: error.code });
+      if (error.code === 'connector_identity_not_active') return json(res, 401, { error: error.code });
+      if (error.code === 'telemetry_camera_scope_mismatch') return json(res, 403, { error: error.code });
+      if (error.code === 'invalid_telemetry_signature') return json(res, 401, { error: error.code });
+      if (error.code === 'telemetry_replay_detected') return json(res, 409, { error: error.code });
+      console.error('SPAIS connector telemetry failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'connector_telemetry_failed' });
+    }
   }
 
   // Operational events are tenant-scoped. The organization comes from the URL,

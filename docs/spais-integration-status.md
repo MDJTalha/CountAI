@@ -43,7 +43,9 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Production identity-provider integration, key rotation and operational secret management.
 - Deployment-specific OIDC identity-provider configuration, identity lifecycle operations, emergency key revocation procedures and operational secret management.
 - Organization CRUD and broader tenant administration workflows beyond the current site/camera/connector metadata registry.
-- Connector-signed telemetry/event request verification and public-key revocation/rotation workflows.
+- Signed connector telemetry ingestion with RSA proof, strict event payload schemas, five-minute timestamp window, per-connector nonce replay prevention, bounded metadata-only payloads, and append-only SQLite receipts. Recorder coverage is explicitly labelled `reported_not_independently_verified`; telemetry receipt does not prove a camera/NVR is actually recording.
+- Authorized, site-scoped connector telemetry reads require trusted bearer identity plus `connector:read`; returned recorder coverage remains labelled as reported rather than independently verified.
+- Connector public-key revocation/rotation workflows and production-grade rate limiting/abuse controls.
 - Recorder-side recording coverage evidence.
 - Incident lifecycle and SOP/policy governance.
 - Governed model candidate evaluation, approval and promotion.
@@ -60,7 +62,7 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 ## Next implementation gate
 1. Validate the lifecycle/audit and connector proof-of-possession flow with full CI and security review.
 2. Configure a real trusted identity provider in a controlled environment and verify issuer, audience, tenant and permission claim mapping.
-3. Add signed connector telemetry, revocation/rotation and replay protection before treating connector messages as trusted operational evidence.
+3. Complete connector key revocation/rotation, deployment-specific rate limiting, monitoring and abuse controls; verify signed telemetry in a controlled lab before treating any reported status as operational evidence.
 4. Implement customer-controlled camera/NVR connector operation and recorder-side recording assurance; enrollment alone does not prove a camera is connected or recording.
 5. Add incident/SOP governance and a governed learning lifecycle.
 6. Configure backup/retention/monitoring for single-host SQLite; use a shared transactional database service for multi-instance deployments.
