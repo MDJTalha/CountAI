@@ -5,6 +5,7 @@ import { LiveCounter } from './LiveCounter';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { formatDetectionOverlayLabel } from './engine/detectionOverlay.mjs';
 import { DashboardHome } from './DashboardHome';
+import { SpaisGovernanceWorkspace } from './SpaisGovernanceWorkspace';
 import { totalsByCategory } from './engine/counting';
 import { listSessions, saveSession, deleteSession } from './storage/sessions';
 import type { CountSession, Detection } from './types/counting';
@@ -26,7 +27,7 @@ function getDetector() {
 }
 const MAX_FILE = 12 * 1024 * 1024;
 export function App() {
-  const [activeWorkspace, setActiveWorkspace] = useState<'dashboard' | 'live' | 'photo' | 'history' | 'analytics'>('dashboard');
+  const [activeWorkspace, setActiveWorkspace] = useState<'dashboard' | 'live' | 'photo' | 'history' | 'analytics' | 'governance'>('dashboard');
   const fileRef = useRef<HTMLInputElement>(null), cameraRef = useRef<HTMLVideoElement>(null), canvasRef = useRef<HTMLCanvasElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null), [imageUrl, setImageUrl] = useState(''), [filename, setFilename] = useState('');
   const [detections, setDetections] = useState<Detection[]>([]), [target, setTarget] = useState(''), [busy, setBusy] = useState(false), [engine, setEngine] = useState('Not loaded');
@@ -119,6 +120,7 @@ export function App() {
       <button className={activeWorkspace === 'photo' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'photo'} onClick={() => setActiveWorkspace('photo')}>Photo Review</button>
       <button className={activeWorkspace === 'history' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'history'} onClick={() => setActiveWorkspace('history')}>History</button>
       <button className={activeWorkspace === 'analytics' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'analytics'} onClick={() => setActiveWorkspace('analytics')}>Analytics</button>
+      <button className={activeWorkspace === 'governance' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'governance'} onClick={() => setActiveWorkspace('governance')}>Incidents &amp; SOPs</button>
     </nav>
     <div style={{ display: activeWorkspace === 'dashboard' ? undefined : 'none' }}>
       <DashboardHome sessions={sessions} onNavigate={setActiveWorkspace} onOpenSession={(session) => { void openSession(session); setActiveWorkspace('photo'); }} />
@@ -152,6 +154,7 @@ export function App() {
     </section>
     <section className="history-section" style={{ display: activeWorkspace === 'history' ? undefined : 'none' }}><div className="section-heading"><div><span className="step">03 / ON THIS DEVICE</span><h2>Recent sessions</h2></div><span className="local-badge">IndexedDB</span></div>{sessions.length ? sessions.slice(0,8).map(s=><div className="session-row" key={s.id}><button className="session-open" onClick={()=>openSession(s)}><span><b>{s.title}</b><small>{new Date(s.createdAt).toLocaleString()} Â· {s.target}</small></span><strong>{s.detections.length}<ChevronRight size={16}/></strong></button><button className="icon-button danger" aria-label="Delete session" onClick={()=>eraseSession(s.id)}><Trash2 size={15}/></button></div>) : <p className="empty-copy">Your saved sessions will appear here after you analyze or correct a count.</p>}</section>
     <div style={{ display: activeWorkspace === 'analytics' ? undefined : 'none' }}><AnalyticsDashboard sessions={sessions} onOpenSession={openSession} /></div>
+    <SpaisGovernanceWorkspace visible={activeWorkspace === 'governance'} />
     <footer><div className="footer-brand">SPAIS <span>INTELLIGENT OPERATIONS</span></div><p>SPAIS · Surveillance and operational intelligence, with human oversight.</p><small>Photos are processed locally by default. This build does not identify people or perform biometric matching.</small></footer>
     <div id="edit-modal" className="modal hidden" role="dialog" aria-modal="true" aria-labelledby="edit-heading"><div className="modal-card"><div className="modal-head"><h2 id="edit-heading">Correct detection</h2><button className="icon-button" onClick={()=>document.getElementById('edit-modal')?.classList.add('hidden')} aria-label="Close"><X size={18}/></button></div><label className="field-label" htmlFor="edit-category">CATEGORY</label><input id="edit-category" value={editCategory} onChange={e=>setEditCategory(e.target.value)} maxLength={100}/><label className="field-label" htmlFor="edit-confidence">CONFIDENCE (0â€“1, OPTIONAL)</label><input id="edit-confidence" type="number" min="0" max="1" step="0.01" value={editConfidence} onChange={e=>setEditConfidence(e.target.value)}/><div className="modal-actions"><button className="outline-button" onClick={()=>document.getElementById('edit-modal')?.classList.add('hidden')}>Cancel</button><button className="primary-button" onClick={saveEdit}><Check size={16}/> Save correction</button></div></div></div>
   </main>;
