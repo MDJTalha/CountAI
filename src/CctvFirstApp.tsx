@@ -1,8 +1,8 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import {
-  Activity, ArrowRight, Bell, Camera, CheckCircle2, CircleHelp, Cloud,
-  Database, Eye, Gauge, Network, RadioTower, ShieldCheck, Video, Wifi,
-  WifiOff, Workflow
+  Activity, ArrowRight, Bell, Camera, CircleHelp, Database, Eye, Gauge,
+  Network, RadioTower, ShieldCheck, Video, WifiOff, Workflow
 } from 'lucide-react';
 import { SpaisOperationsWorkspace } from './SpaisOperationsWorkspace';
 import { SpaisGovernanceWorkspace } from './SpaisGovernanceWorkspace';
@@ -24,7 +24,7 @@ const connectionTypes = [
   { name: 'RTSP / vendor API', detail: 'Stream access through customer-approved network paths', icon: Network, status: 'Not configured' }
 ];
 
-function StatusPill({ children, tone = 'pending' }: { children: React.ReactNode; tone?: 'pending' | 'safe' }) {
+function StatusPill({ children, tone = 'pending' }: { children: ReactNode; tone?: 'pending' | 'safe' }) {
   return <span className={`cctv-status ${tone === 'safe' ? 'is-safe' : ''}`}>{children}</span>;
 }
 
