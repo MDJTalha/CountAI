@@ -68,7 +68,7 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Production-grade rate limiting/abuse controls, operational key management, and deployment monitoring.
 - Vendor-specific ONVIF/NVR adapters, independently verified recorder-side recording coverage evidence, production-grade queue monitoring/backup/recovery procedures, and customer lab acceptance.
 - Incident-to-SOP version linkage is implemented on `main`: incidents retain the exact approved SOP version ID, and the API rejects unapproved or out-of-scope references.
-- An independent evaluator execution service, shadow/canary rollout, production promotion and automated rollback are not implemented. The current feature branch adds signature-verified intake for external evaluator reports when a trusted RSA public JWK and explicit acceptance thresholds are configured; it does not run evaluation itself or change production inference.
+- Signed evaluator-report intake is implemented on main: it verifies an external evaluator signature against a server-configured RSA JWK, applies server-configured sample/precision/recall/false-positive thresholds, stores immutable evaluation metadata, rejects replay, and audits results. It does not execute evaluation or change candidate lifecycle into a deployment state. This feature branch adds an API regression suite for signature verification, thresholds, replay, scope, and digest binding. An independent evaluator execution service, shadow/canary rollout, production promotion and automated rollback remain unimplemented.
 - Real-camera lab or customer pilot acceptance.
 
 
