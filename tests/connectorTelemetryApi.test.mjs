@@ -162,6 +162,13 @@ test('enrolled connector telemetry verifies signatures, enforces freshness and r
   const cameraResponse = await post(telemetryPath, cameraHealth, { 'content-type': 'application/json' });
   assert.equal(cameraResponse.status, 202);
 
+  const crossSiteCamera = makeMessage('camera.health', {
+    cameraId: 'camera-from-another-site', status: 'online'
+  });
+  const crossSiteResponse = await post(telemetryPath, crossSiteCamera, { 'content-type': 'application/json' });
+  assert.equal(crossSiteResponse.status, 403);
+  assert.equal((await crossSiteResponse.json()).error, 'telemetry_camera_scope_mismatch');
+
   const coverage = makeMessage('recorder.recording_coverage', {
     cameraId: 'camera-1',
     windowStart: '2026-10-24T00:00:00.000Z',
