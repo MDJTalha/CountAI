@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { AlertCircle, CheckCircle2, ClipboardCheck, RefreshCw, ShieldCheck } from 'lucide-react';
+import { SpaisLearningLab } from './SpaisLearningLab';
 
 type Incident = {
   id: string; siteId: string; title: string; description: string; sopVersionId?: string | null;
@@ -265,6 +266,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
         }) : <p className="governance-empty">No SOP versions loaded. Create a draft to begin a versioned approval workflow.</p>}
       </article>
     </div>
+    <SpaisLearningLab organizationId={organizationId} siteId={siteId} token={token} />
     <p className="governance-footnote"><ClipboardCheck size={15}/> Server-side authorization remains authoritative. This workspace does not persist bearer tokens. API availability still depends on trusted identity-provider configuration and the server's persistent SQLite path.</p>
   </section>;
 }
