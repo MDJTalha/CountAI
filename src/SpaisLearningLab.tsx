@@ -159,7 +159,7 @@ function LearningSourcesPanel({ organizationId, siteId, token }: Props) {
     {message && <p className={'learning-message ' + (isError ? 'is-error' : '')} role="status">{message}</p>}
     {sources.length > 0 && <div className="learning-source-list">{sources.map(source => <article className="learning-candidate" key={source.id}><div className="learning-candidate-heading"><div><b>{source.title}</b><small>{source.sourceType.replace('_',' ')} · {source.fileName || 'Text / observation'} · {new Date(source.createdAt).toLocaleString()}</small></div><span className="governance-status status-under_review">{source.status.replaceAll('_',' ')}</span></div><p>{source.description || 'No additional context supplied.'}</p><small>{source.mediaStored ? 'Media stored on customer host' : 'Text/metadata record'} · {source.sha256 ? 'SHA-256 ' + source.sha256.slice(0,16) + '…' : 'No binary hash'} · Learning state: {source.learningState.replaceAll('_',' ')}</small></article>)}</div>}
     <div className="learning-tip"><BookOpen size={16}/><span>Pipeline status: ingest → human annotation/validation → versioned dataset → model-specific training job → holdout evaluation → governed approval. This initial stage implements source ingestion and traceability; the training worker and real-time stream adapter remain separate stages.</span></div>
-  </section></div>;
+  </section>;
 }
 
 export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
@@ -314,5 +314,5 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
       </article>;
     }) : <p className="governance-empty">No learning proposals loaded. Load existing proposals or register a candidate for offline evaluation review.</p>}
     <p className="governance-footnote"><ShieldCheck size={15}/> This registry stores metadata and SHA-256 identifiers only. It does not accept model artifacts, execute evaluation, train models, or change production inference behavior.</p>
-  </section>;
+  </section></div>;
 }
