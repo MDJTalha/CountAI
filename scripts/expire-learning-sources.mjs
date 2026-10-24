@@ -13,6 +13,7 @@ if (!process.env.SPAIS_EVENTS_DB_PATH) {
     try {
       const result = await store.purgeExpired({ retentionDays });
       process.stdout.write(JSON.stringify({ task: 'learning-source-retention', ...result }) + String.fromCharCode(10));
+      if (result.failed > 0 || result.mediaCleanupPending > 0) process.exitCode = 1;
     } finally {
       await store.close();
     }
