@@ -795,6 +795,7 @@ const server = createServer(async (req, res) => {
       if (error.code === 'invalid_learning_source') return json(res, 400, { error: error.code, details: error.validationErrors || [] });
       if (error.code === 'document_text_too_large') return json(res, 413, { error: error.code });
       if (error.code === 'invalid_learning_source_delete') return json(res, 400, { error: error.code });
+      if (error.code === 'learning_source_media_cleanup_failed') return json(res, 503, { error: error.code, retryable: true });
       if (['invalid_or_oversized_file_payload','file_signature_mismatch'].includes(error.code)) return json(res, 400, { error: error.code });
       console.error('CountAI learning source request failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'learning_source_request_failed' });
