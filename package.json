@@ -16,7 +16,8 @@
     "test:pwa-build": "node --test tests/pwaBuild.test.mjs",
     "test:operational-events": "node --test tests/operationalEvents.test.mjs",
     "test:spais-contracts": "node --test tests/spaisContracts.test.mjs",
-    "test": "npm run test:engine && npm run test:analytics && npm run test:overlay-labels && npm run test:operational-events && npm run test:spais-contracts && npm run test:detection-enhancement && npm run test:camera-health && npm run test:camera-health-history && npm run build && npm run test:pwa-build && npm run test:server",
+    "test:spais-auth": "node --test tests/spaisAuth.test.mjs",
+    "test": "npm run test:engine && npm run test:analytics && npm run test:overlay-labels && npm run test:operational-events && npm run test:spais-contracts && npm run test:spais-auth && npm run test:detection-enhancement && npm run test:camera-health && npm run test:camera-health-history && npm run build && npm run test:pwa-build && npm run test:server",
     "test:analytics": "node --test tests/sessionAnalytics.test.mjs",
     "test:overlay-labels": "node --test tests/detectionOverlay.test.mjs"
   },
