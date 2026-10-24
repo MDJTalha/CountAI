@@ -19,6 +19,8 @@ The production entrypoint now renders `src/CctvFirstApp.tsx`, a responsive CCTV-
 - Live-monitoring placeholder that explicitly reports `NO VERIFIED STREAM` until a real stream adapter exists.
 - Sites, cameras, connectors, and operational events workspace using the existing authenticated APIs.
 - Incident/SOP, recording-assurance and AI governance workspace.
+- A governed learning workbench for authorized documents, reference images, human observations/corrections, and short video clips exported from customer-controlled recorders.
+- Tenant/site-scoped learning-source API, content hashes, restricted local media storage, consent confirmation, source status, and append-only ingestion audit records.
 - Clear boundaries for IP cameras, NVR/DVRs, ONVIF and RTSP/vendor API integrations.
 
 The legacy photo-counting component remains in the repository for now but is no longer the primary application entrypoint. Its UI and local-camera counting must not be represented as network-camera/NVR integration.
@@ -46,6 +48,8 @@ The system must not perform unauthorized network scanning, guess camera credenti
 - `src/engine/countingCore.mjs`: shared tracking/counting and line-crossing helpers.
 - `server/index.mjs`: API entrypoint and route integration.
 - `server/spais/`: contracts, authorization, operational events, connector telemetry, recording assurance, incidents, SOPs and learning governance.
+- `server/spais/learningSources.mjs`: authorized learning-source validation, media storage, content hashing, and ingestion audit records.
+- `src/SpaisLearningLab.tsx`: learning-source upload/observation workbench and model-candidate/evaluation governance.
 - `connector/agent.mjs`: customer-side connector agent and telemetry delivery.
 
 ## Development
@@ -72,6 +76,18 @@ npm test
 ```
 
 The CCTV-first source-contract test checks the entrypoint, navigation, honest stream status, integration wording, responsive layout, and documentation. CI/build success is not a substitute for browser acceptance or a real-camera integration pilot.
+
+## Autonomous learning — current implementation boundary
+
+The first learning-data ingestion stage supports:
+
+- Text, Markdown, CSV, JSON and PDF document uploads (up to 8 MiB per file); text formats are indexed as text, while PDF files are stored for later extraction/review.
+- PNG, JPEG and WebP reference images (up to 8 MiB) with file-signature checks and SHA-256 hashes.
+- Human observation/correction notes with optional camera ID, timestamp and labels.
+- Short MP4/WebM clips exported from authorized recorders (up to 8 MiB), stored on the customer-controlled host.
+- Organization/site authorization, explicit upload authorization, bounded inputs, local file permissions, metadata-only listings, and ingestion audit entries.
+
+Ingested sources are queued for human review/annotation; they are **not automatically trusted training labels**. This stage does not yet extract text from PDFs, run image/video inference on uploaded media, continuously record a live network camera, or train/promote a model. Live recording requires the separate authorized camera/recorder stream adapter. Continuous model improvement requires the next stages: annotation and dataset versioning, training workers, a reproducible deep-learning/ML pipeline, independent holdout evaluation, drift monitoring and governed model promotion. Existing model-candidate/evaluation APIs provide a proposal/evaluation governance boundary, not a training engine.
 
 ## Remaining implementation gates
 
