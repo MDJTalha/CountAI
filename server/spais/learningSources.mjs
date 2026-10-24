@@ -200,6 +200,14 @@ export function createSqliteLearningSourceStore({
       const row = database.prepare('SELECT id, media_path FROM countai_learning_sources WHERE organization_id = ? AND site_id = ? AND id = ?')
         .get(organizationId, siteId, sourceId);
       if (!row) return { deleted: false, mediaCleanupPending: false };
+      // Delete media first. If cleanup fails, preserve the source record so an
+      // authorized operator can retry rather than silently orphaning customer data.
+      if (row.media_path) {
+        try { await unlink(row.media_path); }
+        catch (error) {
+          if (error.code !== 'ENOENT') throw Object.assign(fail('learning_source_media_cleanup_failed'), { cause: error });
+        }
+      }
       const occurredAt = new Date().toISOString();
       database.exec('BEGIN IMMEDIATE');
       try {
@@ -212,12 +220,7 @@ export function createSqliteLearningSourceStore({
         try { database.exec('ROLLBACK'); } catch {}
         throw error;
       }
-      let mediaCleanupPending = false;
-      if (row.media_path) {
-        try { await unlink(row.media_path); }
-        catch (error) { if (error.code !== 'ENOENT') mediaCleanupPending = true; }
-      }
-      return { deleted: true, mediaCleanupPending };
+      return { deleted: true, mediaCleanupPending: false };
     },
     async purgeExpired({ retentionDays = Number(process.env.COUNTAI_LEARNING_SOURCE_RETENTION_DAYS || 0), now = Date.now() } = {}) {
       if (!Number.isInteger(retentionDays) || retentionDays < 0 || retentionDays > 3650 || !Number.isFinite(now)) {
