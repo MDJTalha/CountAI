@@ -185,6 +185,7 @@ const server = createServer(async (req, res) => {
       return json(res, 201, { enrollment: challenge });
     } catch (error) {
       if (error.code === 'connector_not_enrollable') return json(res, 409, { error: 'connector_not_enrollable' });
+      if (error.code === 'invalid_public_key') return json(res, 400, { error: 'invalid_public_key' });
       console.error('SPAIS enrollment challenge failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'enrollment_challenge_failed' });
     }
