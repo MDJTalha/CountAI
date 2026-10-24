@@ -253,8 +253,8 @@ export function createConnectorTelemetryReceiver({
         FROM spais_connector_telemetry
         WHERE organization_id = ? AND site_id = ? AND event_type = 'recorder.recording_coverage'
           AND json_extract(payload_json, '$.cameraId') = ?
-          AND json_extract(payload_json, '$.windowEnd') > ?
-          AND json_extract(payload_json, '$.windowStart') < ?
+          AND julianday(json_extract(payload_json, '$.windowEnd')) > julianday(?)
+          AND julianday(json_extract(payload_json, '$.windowStart')) < julianday(?)
         ORDER BY sequence ASC
         LIMIT 20001
       `).all(organizationId, siteId, cameraId, windowStart, windowEnd);
