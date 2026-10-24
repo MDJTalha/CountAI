@@ -227,7 +227,6 @@ export function LiveCounter() {
     try {
       finishLiveSession(window.localStorage, sessionId, {
         reason,
-        actualResolution,
         linePosition,
         detectionMode: modeRef.current,
         totals: { ...countsRef.current },
