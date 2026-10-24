@@ -1,7 +1,7 @@
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import '@tensorflow/tfjs';
 import type { Detection, ModelDetector } from '../types/counting';
-import { createTileRegions, mergeTiledDetections } from './detectionEnhancement.mjs';
+import { createTileRegions, getInferenceSize, mergeTiledDetections } from './detectionEnhancement.mjs';
 
 export class CocoSsdDetector implements ModelDetector {
   private model: cocoSsd.ObjectDetection | null = null;
@@ -15,12 +15,41 @@ export class CocoSsdDetector implements ModelDetector {
 
   private async detectSource(image: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement, minScore = 0.25): Promise<Detection[]> {
     if (!this.model) await this.load();
-    const predictions = await this.model!.detect(image, 40, minScore);
+
+    const sourceWidth = image instanceof HTMLVideoElement ? image.videoWidth :
+      image instanceof HTMLImageElement ? image.naturalWidth : image.width;
+    const sourceHeight = image instanceof HTMLVideoElement ? image.videoHeight :
+      image instanceof HTMLImageElement ? image.naturalHeight : image.height;
+    if (!sourceWidth || !sourceHeight) {
+      throw new Error('The image has no readable dimensions. Re-upload it and try again.');
+    }
+
+    // Bound model input size: file size alone does not limit decoded pixel count.
+    // A very large photo can otherwise make browser inference extremely slow or
+    // exhaust graphics memory. Scale predicted boxes back to source-image pixels.
+    const inferenceSize = getInferenceSize(sourceWidth, sourceHeight);
+    let input: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement = image;
+    if (inferenceSize.scale < 1) {
+      const canvas = document.createElement('canvas');
+      canvas.width = inferenceSize.width;
+      canvas.height = inferenceSize.height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not prepare this photo for analysis. Try a different image or browser.');
+      context.drawImage(image, 0, 0, inferenceSize.width, inferenceSize.height);
+      input = canvas;
+    }
+
+    const predictions = await this.model.detect(input, 40, minScore);
     return predictions.map(p => ({
       id: `local-${Date.now()}-${this.nextDetectionId++}`,
       category: p.class,
       confidence: p.score,
-      bbox: [p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]],
+      bbox: [
+        p.bbox[0] / inferenceSize.scale,
+        p.bbox[1] / inferenceSize.scale,
+        p.bbox[2] / inferenceSize.scale,
+        p.bbox[3] / inferenceSize.scale
+      ],
       source: 'local'
     }));
   }
