@@ -13,7 +13,19 @@ type Sop = {
   content: string; category: string; status: 'draft' | 'in_review' | 'approved' | 'retired';
   createdBy: string; approvedBy: string | null; createdAt: string; approvedAt: string | null;
 };
+type CoverageAssessment = {
+  reportCount: number; evaluatedReportCount: number; partialReportCount: number;
+  expectedReportedSeconds: number; recordedReportedSeconds: number; reportedGapSeconds: number;
+  reportedCoveragePercent: number | null; windowContinuity: string; assessment: string;
+  latestReceiptAt: string | null; latestReceiptAgeSeconds: number | null; latestReportFresh: boolean;
+  trustLevel: string; interpretation: string;
+};
 type Props = { visible: boolean };
+
+function localDateTimeValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 async function readResponse<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
@@ -48,6 +60,10 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
   const [sopContent, setSopContent] = useState('');
   const [sopCategory, setSopCategory] = useState('operations');
   const [transitionNotes, setTransitionNotes] = useState<Record<string, string>>({});
+  const [cameraId, setCameraId] = useState('');
+  const [coverageWindowStart, setCoverageWindowStart] = useState(() => localDateTimeValue(new Date(Date.now() - 60 * 60 * 1000)));
+  const [coverageWindowEnd, setCoverageWindowEnd] = useState(() => localDateTimeValue(new Date()));
+  const [coverageAssessment, setCoverageAssessment] = useState<CoverageAssessment | null>(null);
 
   const approvedSops = sops.filter(sop => sop.status === 'approved');
 
@@ -83,6 +99,31 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
       setIsError(true);
       setMessage(error instanceof Error ? error.message : 'Could not load governance records.');
       setIncidents([]); setSops([]);
+    } finally { setBusy(false); }
+  }
+  async function assessCoverage() {
+    if (!organizationId.trim() || !siteId.trim() || !token.trim() || !cameraId.trim() || !coverageWindowStart || !coverageWindowEnd) {
+      setIsError(true); setMessage('Enter the trusted connection details, camera ID, and reporting window.'); return;
+    }
+    const start = new Date(coverageWindowStart);
+    const end = new Date(coverageWindowEnd);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      setIsError(true); setMessage('The recording-assurance end time must be after the start time.'); return;
+    }
+    setBusy(true); setIsError(false); setMessage('Evaluating signed coverage reports…');
+    try {
+      const query = new URLSearchParams({
+        siteId: siteId.trim(), windowStart: start.toISOString(), windowEnd: end.toISOString()
+      });
+      const response = await fetch(`/api/v1/organizations/${encodeURIComponent(organizationId.trim())}/cameras/${encodeURIComponent(cameraId.trim())}/recording-assurance?${query}`, {
+        headers: authHeaders(), cache: 'no-store'
+      });
+      const body = await readResponse<{ assessment: CoverageAssessment }>(response);
+      setCoverageAssessment(body.assessment);
+      setMessage(`Assessment returned: ${body.assessment.assessment.replaceAll('_', ' ')}. Connector reports are not independently verified recording proof.`);
+    } catch (error) {
+      setIsError(true); setCoverageAssessment(null);
+      setMessage(error instanceof Error ? error.message : 'Could not assess recording coverage.');
     } finally { setBusy(false); }
   }
   async function submitIncident(event: FormEvent<HTMLFormElement>) {
@@ -155,13 +196,33 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
       <span className="local-badge"><ShieldCheck size={14}/> Server-authorized</span>
     </div>
     <article className="dashboard-card governance-connect">
-      <div className="dashboard-card-head"><h2>Secure connection</h2><button className="outline-button" type="button" onClick={() => void refresh()} disabled={busy}><RefreshCw size={15}/>{busy ? 'Working…' : 'Refresh records'}</button></div>
+      <div className="dashboard-card-head"><h2>Secure connection</h2><div className="governance-header-actions"><button className="outline-button" type="button" onClick={() => void refresh()} disabled={busy}><RefreshCw size={15}/>{busy ? 'Working…' : 'Refresh records'}</button><button className="subtle-button" type="button" onClick={() => { setToken(''); setIncidents([]); setSops([]); setCoverageAssessment(null); setMessage('Connection cleared. The bearer token was removed from component memory.'); setIsError(false); }}>Clear token</button></div></div>
       <div className="governance-form-grid">
         <label>Organization ID<input value={organizationId} onChange={event => setOrganizationId(event.target.value)} autoComplete="off" placeholder="Organization identifier"/></label>
         <label>Active site ID<input value={siteId} onChange={event => setSiteId(event.target.value)} autoComplete="off" placeholder="Site identifier"/></label>
         <label className="governance-token">Trusted bearer token<input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Token held in memory only"/></label>
       </div>
       <p className={`governance-notice ${isError ? 'is-error' : ''}`} role="status">{isError ? <AlertCircle size={16}/> : <CheckCircle2 size={16}/>}<span>{message || 'Token is not saved to local storage, IndexedDB, URL, or browser history. Clear it when you finish.'}</span></p>
+    </article>
+    <article className="dashboard-card governance-assurance">
+      <div className="dashboard-card-head"><h2>Recording coverage assessment</h2><span className="governance-status">Report-based</span></div>
+      <p className="governance-panel-copy">Evaluate signed recorder coverage reports for one camera and a bounded time window. This computes the reported ratio and report-window continuity; it does not independently prove that footage was captured.</p>
+      <div className="governance-assurance-form">
+        <label>Camera ID<input value={cameraId} onChange={event => setCameraId(event.target.value)} placeholder="Registered camera identifier" autoComplete="off"/></label>
+        <label>Window start<input type="datetime-local" value={coverageWindowStart} onChange={event => setCoverageWindowStart(event.target.value)}/></label>
+        <label>Window end<input type="datetime-local" value={coverageWindowEnd} onChange={event => setCoverageWindowEnd(event.target.value)}/></label>
+        <button className="primary-button" type="button" onClick={() => void assessCoverage()} disabled={busy || !token.trim() || !organizationId.trim() || !siteId.trim() || !cameraId.trim()}><RefreshCw size={15}/>{busy ? 'Working…' : 'Assess reported coverage'}</button>
+      </div>
+      {coverageAssessment && <div className="governance-assessment-results">
+        <div className="governance-assessment-metrics">
+          <div><small>Reported coverage</small><strong>{coverageAssessment.reportedCoveragePercent === null ? '—' : `${coverageAssessment.reportedCoveragePercent}%`}</strong></div>
+          <div><small>Reported gap</small><strong>{coverageAssessment.reportedGapSeconds.toLocaleString()}s</strong></div>
+          <div><small>Windows evaluated</small><strong>{coverageAssessment.evaluatedReportCount.toLocaleString()}</strong></div>
+          <div><small>Assessment</small><strong className="governance-assessment-label">{coverageAssessment.assessment.replaceAll('_', ' ')}</strong></div>
+        </div>
+        <p className="governance-assessment-detail">Report continuity: <b>{coverageAssessment.windowContinuity.replaceAll('_', ' ')}</b>. Latest report: {coverageAssessment.latestReceiptAt ? dateLabel(coverageAssessment.latestReceiptAt) : 'none'}{coverageAssessment.latestReportFresh ? ' · recent receipt' : ' · stale or unavailable receipt'}.</p>
+        <p className="governance-panel-copy">Trust level: {coverageAssessment.trustLevel}. Interpretation: <b>{coverageAssessment.interpretation.replaceAll('_', ' ')}</b>.</p>
+      </div>}
     </article>
     <div className="governance-columns">
       <article className="dashboard-card">
