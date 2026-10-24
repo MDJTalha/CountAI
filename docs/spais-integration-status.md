@@ -44,6 +44,7 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Deployment-specific OIDC identity-provider configuration, identity lifecycle operations, emergency key revocation procedures and operational secret management.
 - Organization CRUD and broader tenant administration workflows beyond the current site/camera/connector metadata registry.
 - Signed connector telemetry ingestion with RSA proof, strict event payload schemas, five-minute timestamp window, per-connector nonce replay prevention, bounded metadata-only payloads, and append-only SQLite receipts. Recorder coverage is explicitly labelled `reported_not_independently_verified`; telemetry receipt does not prove a camera/NVR is actually recording.
+- Authorized, site-scoped connector telemetry reads require trusted bearer identity plus `connector:read`; returned recorder coverage remains labelled as reported rather than independently verified.
 - Connector public-key revocation/rotation workflows and production-grade rate limiting/abuse controls.
 - Recorder-side recording coverage evidence.
 - Incident lifecycle and SOP/policy governance.
