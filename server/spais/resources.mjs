@@ -311,14 +311,25 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
           UPDATE spais_resources SET name = ?, status = ?, metadata_json = ?, updated_at = ?
           WHERE organization_id = ? AND resource_type = ? AND resource_id = ?
         `).run(nextName, nextStatus, JSON.stringify(nextMetadata), timestamp, organizationId, resourceType, resourceId);
+        let revokedEnrollmentCount = 0;
+        if (resourceType === 'connector' && nextStatus === 'revoked') {
+          const revoked = database.prepare(`
+            UPDATE spais_connector_enrollments SET status = 'revoked'
+            WHERE organization_id = ? AND site_id = ? AND connector_id = ?
+              AND status IN ('pending', 'completed')
+          `).run(organizationId, before.siteId, resourceId);
+          revokedEnrollmentCount = revoked.changes;
+        }
         const updated = database.prepare(`
           SELECT * FROM spais_resources
           WHERE organization_id = ? AND resource_type = ? AND resource_id = ?
         `).get(organizationId, resourceType, resourceId);
         const after = toResource(updated);
         writeAudit(database, {
-          organizationId, siteId: after.siteId, actorId, action: 'resource.updated',
-          resourceType, resourceId, occurredAt: timestamp, details: { before, after }
+          organizationId, siteId: after.siteId, actorId,
+          action: resourceType === 'connector' && nextStatus === 'revoked' ? 'connector.key_revoked' : 'resource.updated',
+          resourceType, resourceId, occurredAt: timestamp,
+          details: { before, after, ...(revokedEnrollmentCount ? { revokedEnrollmentCount } : {}) }
         });
         database.exec('COMMIT;');
         return after;
@@ -387,7 +398,7 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
           SELECT * FROM spais_resources
           WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
         `).get(organizationId, connectorId, siteId);
-        if (!connector || connector.status !== 'pending') throw invalid('connector_not_enrollable');
+        if (!connector || !['pending', 'enrolled'].includes(connector.status)) throw invalid('connector_not_enrollable');
         const superseded = database.prepare(`
           UPDATE spais_connector_enrollments SET status = 'revoked'
           WHERE organization_id = ? AND site_id = ? AND connector_id = ? AND status = 'pending'
@@ -472,10 +483,22 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
             SELECT * FROM spais_resources
             WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
           `).get(enrollment.organization_id, enrollment.connector_id, enrollment.site_id);
-          if (!connector || connector.status !== 'pending') throw invalid('connector_not_enrollable');
+          if (!connector || !['pending', 'enrolled'].includes(connector.status)) throw invalid('connector_not_enrollable');
 
+          const priorActiveEnrollments = database.prepare(`
+            SELECT key_thumbprint FROM spais_connector_enrollments
+            WHERE organization_id = ? AND site_id = ? AND connector_id = ? AND status = 'completed'
+          `).all(enrollment.organization_id, enrollment.site_id, enrollment.connector_id);
           const keyThumbprint = enrollment.key_thumbprint;
           const completedAt = now.toISOString();
+          // Rotation is atomic: the prior key is revoked in the same transaction that
+          // activates the replacement, so two keys cannot remain trusted after commit.
+          if (priorActiveEnrollments.length) {
+            database.prepare(`
+              UPDATE spais_connector_enrollments SET status = 'revoked'
+              WHERE organization_id = ? AND site_id = ? AND connector_id = ? AND status = 'completed'
+            `).run(enrollment.organization_id, enrollment.site_id, enrollment.connector_id);
+          }
           database.prepare(`
             UPDATE spais_connector_enrollments SET status = 'completed', completed_at = ?
             WHERE enrollment_id = ?
@@ -491,9 +514,16 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
           const resource = toResource(updatedRow);
           writeAudit(database, {
             organizationId: enrollment.organization_id, siteId: enrollment.site_id,
-            actorId: enrollment.created_by, action: 'connector.enrollment_completed',
+            actorId: enrollment.created_by,
+            action: priorActiveEnrollments.length ? 'connector.key_rotated' : 'connector.enrollment_completed',
             resourceType: 'connector', resourceId: enrollment.connector_id,
-            occurredAt: completedAt, details: { enrollmentId, keyThumbprint, after: resource }
+            occurredAt: completedAt,
+            details: {
+              enrollmentId, keyThumbprint, after: resource,
+              ...(priorActiveEnrollments.length
+                ? { previousKeyThumbprints: priorActiveEnrollments.map(item => item.key_thumbprint) }
+                : {})
+            }
           });
           database.exec('COMMIT;');
           result = { enrollmentId, connector: resource, keyThumbprint, enrolledAt: completedAt };
