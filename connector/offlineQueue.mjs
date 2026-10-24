@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, chmod, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rename, chmod, writeFile, rm, lstat, open } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 const MAX_ITEMS = 1000;
@@ -44,8 +44,12 @@ function normalizePath(path) {
 export async function readTelemetryQueue(path) {
   const filePath = normalizePath(path);
   let text;
-  try { text = await readFile(filePath, 'utf8'); }
-  catch (error) {
+  try {
+    const info = await lstat(filePath);
+    if (info.isSymbolicLink() || !info.isFile()) throw fail('connector_queue_not_regular_file');
+    await chmod(filePath, 0o600).catch(() => {});
+    text = await readFile(filePath, 'utf8');
+  } catch (error) {
     if (error.code === 'ENOENT') return [];
     throw error;
   }
@@ -76,7 +80,13 @@ export async function writeTelemetryQueue(path, entries) {
   await mkdir(dirname(filePath), { recursive: true });
   const tempPath = filePath + '.tmp-' + randomUUID();
   try {
-    await writeFile(tempPath, text, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    const handle = await open(tempPath, 'wx', 0o600);
+    try {
+      await handle.writeFile(text, 'utf8');
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     await chmod(tempPath, 0o600).catch(() => {});
     await rename(tempPath, filePath);
     await chmod(filePath, 0o600).catch(() => {});
