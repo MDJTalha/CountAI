@@ -420,27 +420,12 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
       // The raw challenge is returned once; its hash and the expected public key are persisted.
       return { enrollmentId, challenge, connectorId, siteId, expiresAt, keyThumbprint: normalizedKey.keyThumbprint };
     },
-    async completeConnectorEnrollment({ enrollmentId, challenge, publicKeyJwk, signature, now = new Date() }) {
+    async completeConnectorEnrollment({ enrollmentId, challenge, signature, now = new Date() }) {
       if (!isResourceId(enrollmentId) || typeof challenge !== 'string' ||
           !/^[A-Za-z0-9_-]{40,64}$/.test(challenge) ||
-          typeof signature !== 'string' || signature.length > 2048 ||
-          !publicKeyJwk || typeof publicKeyJwk !== 'object' || Array.isArray(publicKeyJwk)) {
+          typeof signature !== 'string' || signature.length > 2048) {
         throw invalid('invalid_enrollment_proof');
       }
-      let serializedKey;
-      try { serializedKey = JSON.stringify(publicKeyJwk); }
-      catch { throw invalid('invalid_public_key'); }
-      if (Buffer.byteLength(serializedKey, 'utf8') > 4096) throw invalid('invalid_public_key');
-      const privateParameters = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth'];
-      if (publicKeyJwk.kty !== 'RSA' || typeof publicKeyJwk.n !== 'string' ||
-          typeof publicKeyJwk.e !== 'string' ||
-          privateParameters.some(parameter => publicKeyJwk[parameter] !== undefined) ||
-          Buffer.from(publicKeyJwk.n, 'base64url').length < 256) {
-        throw invalid('invalid_public_key');
-      }
-      let publicKey;
-      try { publicKey = createPublicKey({ key: publicKeyJwk, format: 'jwk' }); }
-      catch { throw invalid('invalid_public_key'); }
       const database = await getDatabase();
       let expired = false;
       let result;
@@ -469,6 +454,12 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
           if (storedHash.length !== suppliedHash.length || !timingSafeEqual(storedHash, suppliedHash)) {
             throw invalid('invalid_enrollment_proof');
           }
+          let publicKey;
+          try {
+            publicKey = createPublicKey({ key: JSON.parse(enrollment.public_key_jwk), format: 'jwk' });
+          } catch {
+            throw invalid('invalid_public_key');
+          }
           const validSignature = verifySignature(
             'RSA-SHA256',
             Buffer.from(enrollmentId + '.' + challenge),
@@ -483,15 +474,12 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
           `).get(enrollment.organization_id, enrollment.connector_id, enrollment.site_id);
           if (!connector || connector.status !== 'pending') throw invalid('connector_not_enrollable');
 
-          const keyThumbprint = createHash('sha256')
-            .update(JSON.stringify({ e: publicKeyJwk.e, kty: 'RSA', n: publicKeyJwk.n }))
-            .digest('base64url');
+          const keyThumbprint = enrollment.key_thumbprint;
           const completedAt = now.toISOString();
           database.prepare(`
-            UPDATE spais_connector_enrollments
-            SET status = 'completed', completed_at = ?, public_key_jwk = ?, key_thumbprint = ?
+            UPDATE spais_connector_enrollments SET status = 'completed', completed_at = ?
             WHERE enrollment_id = ?
-          `).run(completedAt, JSON.stringify({ kty: 'RSA', n: publicKeyJwk.n, e: publicKeyJwk.e }), keyThumbprint, enrollmentId);
+          `).run(completedAt, enrollmentId);
           database.prepare(`
             UPDATE spais_resources SET status = 'enrolled', updated_at = ?
             WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
