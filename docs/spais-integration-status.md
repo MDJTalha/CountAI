@@ -13,11 +13,18 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Bounded browser-local live-session history and operational event trail, including explicit count-reset events.
 - Regression coverage for contract versioning, authentication, event validation, tenant/site isolation, persistence, and live-session storage.
 
-## Implemented in the current open PR
-- Tenant-scoped site, camera and connector metadata endpoints using the configured HS256 bearer-token verifier and persistent SQLite registry.
+## Implemented on `main`
+- Tenant-scoped site, camera and connector metadata endpoints using verified bearer-token scope and the persistent SQLite registry.
 - Server-side organization/site/action checks, with camera and connector reads requiring an authorized site filter.
 - Resource validation, duplicate-ID rejection, registered-site checks for child resources, server-assigned creator identity and rejection of credential/stream-URL metadata.
 - API readiness manifest reflects whether authentication settings and SQLite persistence are configured.
+
+## Implemented in the current open PR
+- Adds an optional OIDC/JWKS RS256 token-verification path alongside the existing HS256 service-token adapter.
+- Uses only a server-configured JWKS URL; rejects token-supplied `jku`/`x5u`, non-RS256 algorithms and non-HTTPS remote key URLs.
+- Validates signature, issuer, audience, expiry, not-before, subject, organization scope, site scope and permission claims.
+- Caches JWKS for five minutes and refreshes once when a token references an unknown key ID, supporting normal key rotation.
+- Adds regression tests for valid tokens, invalid signatures, claim failures, unknown-key refresh and unsafe key URLs.
 - Authenticated `GET`/`POST /api/v1/organizations/:organizationId/events` endpoints using the configured trusted bearer-token verifier and server-side organization/site/action authorization.
 - Operational event payload validation, server-assigned actor/organization identity, bounded request/details sizes, and explicit unauthorized/forbidden/error responses.
 - Configurable event persistence: transactional SQLite via `SPAIS_EVENTS_DB_PATH` (persistent single-host deployment) or append-only JSONL via `SPAIS_EVENTS_FILE` (pilot/development fallback).
@@ -34,7 +41,7 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 
 ## Not yet implemented or verified
 - Production identity-provider integration, key rotation and operational secret management.
-- Production identity-provider integration, asymmetric key rotation/JWKS support or managed identity-provider operations.
+- Deployment-specific OIDC identity-provider configuration, identity lifecycle operations, emergency key revocation procedures and operational secret management.
 - Organization CRUD and broader tenant administration workflows beyond the current site/camera/connector metadata registry.
 - Customer-controlled edge connector enrollment and camera/NVR inventory.
 - Recorder-side recording coverage evidence.
@@ -51,9 +58,9 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 6. Report each capability as planned, implemented, automated-test passed, lab-verified, pilot-accepted or production-approved with evidence.
 
 ## Next implementation gate
-1. Validate the tenant resource API branch with full CI and fix any reproducible failures.
-2. Integrate a production identity provider, key rotation/JWKS or equivalent trusted key management, and secret rotation procedures.
-3. Add resource update/deactivate lifecycle operations, audit events and broader organization/site administration.
+1. Validate the OIDC/JWKS verifier with full CI, including negative token and key-rotation tests.
+2. Configure a real trusted identity provider in a controlled environment and verify its issuer, audience, tenant and permission claim mapping.
+3. Add resource update/deactivate lifecycle operations and transactional audit events.
 4. Design customer-controlled connector enrollment and recorder-side recording assurance; metadata inventory is not a connected camera.
 5. Add incident/SOP governance and a governed learning lifecycle.
 6. Configure backup/retention/monitoring for single-host SQLite; use a shared transactional database service for multi-instance deployments.
