@@ -45,6 +45,11 @@ function appendToRecord(record, event) {
     record.totals = { ...(record.totals ?? {}), [category]: ((record.totals ?? {})[category] ?? 0) + 1 };
     record.directions = { ...(record.directions ?? { 'A-to-B': 0, 'B-to-A': 0 }), [direction]: ((record.directions ?? { 'A-to-B': 0, 'B-to-A': 0 })[direction] ?? 0) + 1 };
   }
+  if (event.type === 'count_reset') {
+    record.totalCrossings = 0;
+    record.totals = {};
+    record.directions = { 'A-to-B': 0, 'B-to-A': 0 };
+  }
   if (event.type === 'camera_health_changed') record.cameraHealth = event.payload.status;
   if (event.type === 'inference_health_changed') record.inferenceHealth = event.payload.status;
 }
