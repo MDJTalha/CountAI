@@ -71,7 +71,7 @@ try {
   await page.locator('#edit-confidence').fill('1.2');
   await dialog.getByRole('button', { name: 'Save correction' }).click();
   await page.getByText('Confidence must be a number from 0 to 1.').waitFor({ state: 'visible' });
-  await dialog.waitFor({ state: 'visible' }, { timeout: 2_000 });
+  await dialog.waitFor({ state: 'visible', timeout: 2_000 });
 
   await page.locator('#edit-confidence').fill('0.7');
   await dialog.getByRole('button', { name: 'Save correction' }).click();
