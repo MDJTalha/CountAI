@@ -123,7 +123,7 @@ export async function getTelemetryQueueStatus(path, now = new Date()) {
   }, null);
   return {
     queuedCount: entries.length,
-    queuedBytes: Buffer.byteLength(JSON.stringify(entries) + '\\n', 'utf8'),
+    queuedBytes: Buffer.byteLength(JSON.stringify(entries) + '\n', 'utf8'),
     oldestQueuedAt: oldest?.queuedAt ?? null,
     oldestQueuedAgeSeconds: oldest
       ? Math.max(0, Math.floor((nowMs - Date.parse(oldest.queuedAt)) / 1000))
