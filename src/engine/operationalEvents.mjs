@@ -2,6 +2,7 @@ const EVENT_TYPES = new Set([
   'live_session_started',
   'live_session_stopped',
   'crossing_counted',
+  'count_reset',
   'camera_health_changed',
   'inference_health_changed',
   'operator_correction'
@@ -48,6 +49,10 @@ export function validateOperationalEvent(event) {
         if (!Number.isInteger(event.payload.trackId) || event.payload.trackId < 0) {
           errors.push('crossing_counted payload.trackId must be a non-negative integer');
         }
+        break;
+      case 'count_reset':
+        if (event.actorType !== 'operator') errors.push('count_reset actorType must be operator');
+        if (!isNonEmptyString(event.payload.reason)) errors.push('count_reset payload.reason is required');
         break;
       case 'camera_health_changed':
       case 'inference_health_changed':
