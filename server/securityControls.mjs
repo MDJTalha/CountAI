@@ -17,6 +17,11 @@ export function createApiRateLimiter({
   now = () => Date.now(),
   maxTrackedKeys = MAX_TRACKED_KEYS
 } = {}) {
+  for (const [name, value] of Object.entries({ windowMs, apiLimit, writeLimit, maxTrackedKeys })) {
+    if (!Number.isSafeInteger(value) || value < 1) {
+      throw new RangeError(`${name} must be a positive safe integer`);
+    }
+  }
   const buckets = new Map();
 
   function consume(key, limit) {
