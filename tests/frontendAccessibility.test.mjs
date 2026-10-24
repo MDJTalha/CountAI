@@ -46,3 +46,11 @@ test('motion preferences are respected', () => {
   assert.match(styles, /prefers-reduced-motion: reduce/);
   assert.match(styles, /animation-duration: 0\.01ms/);
 });
+
+
+test('operator-facing copy does not contain common UTF-8 mojibake', () => {
+  for (const brokenSequence of ['â€¦', 'Â·', 'â€œ', 'â€', '0â€“1']) {
+    assert.equal(app.includes(brokenSequence), false, `Found corrupted display text: ${brokenSequence}`);
+  }
+  assert.match(app, /CONFIDENCE \(0–1, OPTIONAL\)/);
+});
