@@ -167,6 +167,19 @@ This roadmap is incremental. Each phase must deliver a testable, reviewable slic
 - Validate one capability at a time: event contract, auth/tenant boundary, connector, recorder evidence, incident lifecycle, policy governance.
 - Prefer a versioned API or small shared schema package over cross-repository imports of internal implementation modules.
 
+## Execution status — 2026-10-24
+
+| Work item | Status | Evidence / next gate |
+|---|---|---|
+| Phase 0: baseline and roadmap | In progress | Roadmap PR #16; local workstation pull and browser re-validation still require the user's machine |
+| Phase 1A: versioned event contract | Implemented on feature branch; CI passed | PR #17; six focused contract tests are included in the stacked Phase 1B CI run |
+| Phase 1B: local live-session summaries | Implemented on feature branch; CI validation in progress | PR #18; bounded local storage, session/crossing/health events, recent-session UI, delete control, storage tests |
+| Phase 1C: CI coverage for new suites | Added | CI workflow now explicitly runs `test:operational-events` and `test:live-sessions`; verify the current workflow result before merge |
+| Phase 2: enterprise security contracts | Not started | Begin after Phase 1 PRs are reviewed and the baseline is synchronized |
+| Phases 3–7 | Not started | Connector, recorder evidence, incident lifecycle, SOP governance, learner and pilot remain gated |
+
 ## Immediate next work item
 
-Start Phase 0 by synchronizing the local CountAI repository, running the committed test suite and browser checklist, then implement Phase 1's versioned event contract and local live-session summaries behind tests. Do not start custom model training or real NVR access before those foundations and their validation gates are in place.
+Finish Phase 1 by confirming CI explicitly executes both new test suites, review the exact PR head, and keep the changes unmerged until that evidence is green. Then prepare Phase 2's versioned organization/site/camera/connector/incident/policy/model/audit contracts and tenant-isolation test matrix. Do not start real NVR access or model training before these foundations and their validation gates are in place.
+
+Local browser validation is still required after the user pulls the accepted changes. A passing hosted build cannot prove real-camera behavior, offline inference, or visual usability.
