@@ -63,7 +63,6 @@ export function applySecurityHeaders(res, { enableHsts = false } = {}) {
   res.setHeader('permissions-policy', 'camera=(self), microphone=(), geolocation=()');
   res.setHeader('cross-origin-opener-policy', 'same-origin');
   res.setHeader('cross-origin-resource-policy', 'same-origin');
-  res.setHeader('cache-control', 'no-store');
   if (enableHsts) {
     // Enable only when HTTPS is guaranteed at the public edge.
     res.setHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
