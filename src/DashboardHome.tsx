@@ -24,9 +24,9 @@ export function DashboardHome({ sessions, onNavigate, onOpenSession }: Props) {
   return <section className="dashboard-page" aria-labelledby="dashboard-title">
     <div className="dashboard-welcome">
       <div>
-        <span className="step">COUNTING WORKSPACE / OVERVIEW</span>
-        <h1 id="dashboard-title">Your counting, at a glance.</h1>
-        <p>Start a new count, check recent records, or explore activity. Your saved photo sessions stay on this device.</p>
+        <span className="step">SPAIS OPERATIONS / OVERVIEW</span>
+        <h1 id="dashboard-title">Your operations, at a glance.</h1>
+        <p>Monitor the capabilities available in this build, open counting workflows, and review local activity. Camera and recorder integrations are shown separately so unavailable evidence is never mistaken for healthy status.</p>
       </div>
       <span className="local-badge"><ShieldCheck size={14}/> Private by default</span>
     </div>
@@ -80,12 +80,15 @@ export function DashboardHome({ sessions, onNavigate, onOpenSession }: Props) {
           <button className="primary-button" onClick={() => onNavigate('photo')}>Create your first count <ArrowRight size={15}/></button>
         </div>}
       </article>
-      <article className="dashboard-card dashboard-side">
-        <div className="dashboard-card-head"><h2>Workspace status</h2><Activity size={17} color="#3b8c76"/></div>
-        <div className="dashboard-stat-row"><span>Photo history</span><strong>{validSessions.length ? 'Available' : 'No records yet'}</strong></div>
-        <div className="dashboard-stat-row"><span>Local-first processing</span><strong>Enabled</strong></div>
-        <div className="dashboard-stat-row"><span>Live history</span><strong>Not persisted yet</strong></div>
-        <p style={{fontSize:10,lineHeight:1.65,color:'#84928b',margin:'14px 0 0'}}>Live-camera history is not included in saved records yet. The dashboard does not imply recorder or NVR monitoring.</p>
+      <article className="dashboard-card dashboard-side" aria-labelledby="spais-readiness-title">
+        <div className="dashboard-card-head"><h2 id="spais-readiness-title">SPAIS capability readiness</h2><Activity size={17} color="#3b8c76"/></div>
+        <div className="dashboard-stat-row"><span>Photo detection & review</span><strong>Available</strong></div>
+        <div className="dashboard-stat-row"><span>Browser-attached live camera</span><strong>Available</strong></div>
+        <div className="dashboard-stat-row"><span>Local photo history</span><strong>{validSessions.length ? 'Available' : 'No records yet'}</strong></div>
+        <div className="dashboard-stat-row"><span>Customer edge connector</span><strong>Not connected</strong></div>
+        <div className="dashboard-stat-row"><span>NVR recording assurance</span><strong>Not connected</strong></div>
+        <div className="dashboard-stat-row"><span>Incidents, SOP governance & learning</span><strong>Planned</strong></div>
+        <p style={{fontSize:10,lineHeight:1.65,color:'#84928b',margin:'14px 0 0'}}>Status reflects this application build, not a remote health check. Browser camera access does not verify an NVR, recording coverage, or customer-network connectivity.</p>
       </article>
     </div>
   </section>;
