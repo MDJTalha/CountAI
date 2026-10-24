@@ -206,6 +206,11 @@ const server = createServer(async (req, res) => {
     const action = req.method === 'GET' ? 'session:read' : 'session:manage';
     const access = await authorizeEventRequest(req, organizationId, siteId, action);
     if (!access.principal) return json(res, access.status, access.body, access.headers);
+    // Session/operational events are site-scoped. Do not let a site-limited token
+    // omit siteId and read events across every site in its organization.
+    if (req.method === 'GET' && !siteId) {
+      return json(res, 400, { error: 'site_id_required' });
+    }
 
     if (!operationalEventStore.configured) {
       return json(res, 503, {
