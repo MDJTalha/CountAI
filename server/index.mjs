@@ -758,6 +758,8 @@ const server = createServer(async (req, res) => {
     const authorization = authorizeSpaisAction({ principal: authentication.principal, organizationId, siteId, action });
     if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
     try {
+      const site = await resourceStore.get({ organizationId, resourceType: 'site', resourceId: siteId });
+      if (!site || site.status !== 'active') return json(res, 404, { error: 'site_not_found' });
       if (req.method === 'DELETE') {
         const result = await learningSourceStore.delete({
           organizationId, siteId, sourceId, actorId: authentication.principal.subjectId
