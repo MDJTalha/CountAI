@@ -107,3 +107,11 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - The governance workspace allows an operator to select an approved SOP version when creating an incident and displays the linked version in incident history.
 - This is traceability, not proof that an operator followed the procedure. Linkage does not alter the immutable SOP version or imply independent verification of recorder evidence.
 - Automated HTTP coverage exercises approved linkage, draft rejection, invalid identifiers, and existing incident lifecycle/audit behavior. CI and review are pending for this branch.
+
+
+## Report-based recording assurance — implementation branch
+- Adds `GET /api/v1/organizations/:organizationId/cameras/:cameraId/recording-assurance`, requiring trusted bearer authentication, `camera:read`, a registered camera at the requested site, and a bounded window of at most seven days.
+- Aggregates signed connector coverage reports within the requested time window, calculates reported coverage percentage and reported gap seconds, and identifies gaps, overlaps, partial windows, stale receipts, and report-limit truncation.
+- Returns `reported_coverage_high`, `reported_coverage_gap`, `incomplete_report_windows`, `insufficient_report_data`, or `no_reports` with the fixed interpretation `reported_not_independently_verified`.
+- Assessment uses metadata provided by the customer-controlled connector; it does not independently verify video segments, recorder retention, or actual footage. A high reported ratio is not a production recording guarantee.
+- Regression coverage exercises authentication, bounded query validation, reported percentage arithmetic, gaps/overlaps, missing/truncated reports, and the unverified interpretation. CI and review remain pending on the feature branch.
