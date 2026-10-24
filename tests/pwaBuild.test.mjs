@@ -24,9 +24,9 @@ test('production build emits the CCTV-first app shell, manifest and service work
 test('CCTV-first production bundle excludes the legacy browser photo detector', async () => {
   const names = await readdir(assets);
   assert.ok(
-    !names.some(name => /^localDetector-.+\\.js$/.test(name)),
+    !names.some(name => /^localDetector-.+\.js$/.test(name)),
     'legacy photo detector must not be shipped in the CCTV-first bundle'
   );
   const worker = await readFile(new URL('sw.js', dist), 'utf8');
-  assert.doesNotMatch(worker, /countai-detector-assets|localDetector-[^"']+\\.js/);
+  assert.doesNotMatch(worker, /countai-detector-assets|localDetector-[^"']+\.js/);
 });
