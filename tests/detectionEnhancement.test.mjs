@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTileRegions, intersectionOverUnion, mergeTiledDetections } from '../src/engine/detectionEnhancement.mjs';
+import { createTileRegions, getInferenceSize, intersectionOverUnion, mergeTiledDetections } from '../src/engine/detectionEnhancement.mjs';
+
+test('large image inference dimensions are capped while preserving aspect ratio', () => {
+  assert.deepEqual(getInferenceSize(8000, 6000), { width: 1280, height: 960, scale: 0.16 });
+});
+
+test('small images are not enlarged or rescaled', () => {
+  assert.deepEqual(getInferenceSize(640, 480), { width: 640, height: 480, scale: 1 });
+});
+
+test('invalid image dimensions are rejected clearly', () => {
+  assert.throws(() => getInferenceSize(0, 600), /positive finite numbers/);
+});
 
 test('detail scan creates four overlapping crops for sufficiently large images', () => {
   const regions = createTileRegions(1280, 720);
