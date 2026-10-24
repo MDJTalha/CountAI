@@ -141,3 +141,34 @@ button:active:not(:disabled){transform:translateY(1px)}
 .governance-assessment-detail{font-size:10px;line-height:1.7;color:#718078;margin:12px 0 8px}
 @media(max-width:760px){.governance-assurance-form{grid-template-columns:repeat(2,minmax(0,1fr))}.governance-assessment-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.governance-header-actions{width:100%;justify-content:flex-start}.governance-assurance-form{grid-template-columns:1fr}.governance-assurance-form .primary-button{grid-column:auto;width:100%}}
+
+
+/* SPAIS governed learning proposals: metadata-only, no automatic deployment path. */
+.learning-lab{margin:15px 0}
+.learning-lab>.dashboard-card-head>div{display:flex;flex-direction:column;gap:4px}
+.learning-lab>.dashboard-card-head .step{font-size:9px}
+.learning-boundary{display:flex;align-items:flex-start;gap:9px;padding:12px;border-radius:11px;background:#fff5e7;color:#815e2c;font-size:11px;line-height:1.65;margin:12px 0 14px}
+.learning-boundary svg{flex-shrink:0;margin-top:1px}
+.learning-create-form{display:grid;gap:11px;padding:14px;border:1px solid #e7eee9;border-radius:13px;background:#f9fbfa}
+.learning-create-form label{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:700;color:#53675e;min-width:0}
+.learning-create-form input,.learning-create-form select,.learning-create-form textarea,.learning-transition input{width:100%;min-width:0;border:1px solid #dce5df;border-radius:10px;padding:11px 12px;background:#fcfdfc;color:var(--ink);font-size:12px}
+.learning-create-form textarea{resize:vertical;line-height:1.6}
+.learning-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.learning-create-form .primary-button{justify-self:start}
+.learning-message{padding:10px 12px;border-radius:9px;background:#eff8f4;color:#477568;font-size:11px;line-height:1.6;overflow-wrap:anywhere}
+.learning-message.is-error{background:#fff2ec;color:#a44b2d}
+.learning-candidate{padding:15px 0;border-top:1px solid #eaf0ec}
+.learning-candidate-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.learning-candidate-heading>div{min-width:0}
+.learning-candidate-heading b{display:block;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.learning-candidate-heading small{display:block;margin-top:4px;font-size:10px;color:#7d8a83;line-height:1.5}
+.learning-candidate>p{font-size:11px;line-height:1.7;color:#65766e;margin:9px 0;overflow-wrap:anywhere}
+.learning-candidate>small{display:block;font-size:9px;line-height:1.6;color:#87938c;overflow-wrap:anywhere}
+.learning-candidate ol{padding-left:20px;color:#66766f;font-size:10px;line-height:1.7}
+.learning-candidate li{padding-left:3px;margin:3px 0}
+.learning-last-note{padding:9px 11px;background:#f6f8f6;border-radius:8px}
+.learning-transition{display:flex;align-items:center;gap:7px;margin-top:10px}
+.learning-transition input{flex:1}
+.learning-transition button{flex:0 0 auto;white-space:nowrap}
+@media(max-width:760px){.learning-form-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.learning-candidate-heading{flex-direction:column}.learning-transition{align-items:stretch;flex-direction:column}.learning-transition button{width:100%}.learning-create-form{padding:11px}}
