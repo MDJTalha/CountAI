@@ -89,7 +89,7 @@ const server = createServer(async (req, res) => {
   }
 
   // Operators can read recent telemetry only for an authorized organization/site/connector.
-  const connectorTelemetryReadRoute = url.pathname.match(/^\\/api\\/v1\\/organizations\\/([^/]+)\\/connectors\\/([^/]+)\\/telemetry$/);
+  const connectorTelemetryReadRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/connectors\/([^/]+)\/telemetry$/);
   if (connectorTelemetryReadRoute) {
     if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
     let organizationId;
