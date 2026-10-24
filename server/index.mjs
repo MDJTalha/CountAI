@@ -153,7 +153,7 @@ const server = createServer(async (req, res) => {
       return json(res, status, { error: error.code || 'invalid_request_body' });
     }
     const allowedFields = new Set([
-      'organizationId', 'siteId', 'connectorId', 'timestamp', 'nonce', 'eventType', 'payload', 'signature'
+      'organizationId', 'siteId', 'connectorId', 'timestamp', 'nonce', 'deliveryId', 'eventType', 'payload', 'signature'
     ]);
     if (!input || typeof input !== 'object' || Array.isArray(input) ||
         Object.keys(input).some(key => !allowedFields.has(key)) || input.connectorId !== connectorId) {
