@@ -34,6 +34,7 @@ const ALLOWED_ACTIONS = new Set([
   "incident:manage",
   "sop:read",
   "sop:manage",
+  "sop:approve",
   "model:read",
   "model:propose",
   "model:approve",

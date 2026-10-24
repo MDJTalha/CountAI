@@ -7,6 +7,7 @@ import { verifySpaisBearerTokenAsync } from './spais/authOidc.mjs';
 import { createSqliteSpaisResourceStore, validateSpaisResourceInput, validateSpaisResourcePatch } from './spais/resources.mjs';
 import { createConnectorTelemetryReceiver } from './spais/connectorTelemetry.mjs';
 import { createSqliteIncidentStore, validateIncidentInput, validateIncidentTransition } from './spais/incidents.mjs';
+import { createSqliteSopStore, validateSopInput, validateSopTransition } from './spais/sops.mjs';
 import {
   createOperationalEvent,
   createOperationalEventStore,
@@ -25,6 +26,7 @@ const connectorTelemetryReceiver = createConnectorTelemetryReceiver({
   resourceStore
 });
 const incidentStore = createSqliteIncidentStore(process.env.SPAIS_EVENTS_DB_PATH);
+const sopStore = createSqliteSopStore(process.env.SPAIS_EVENTS_DB_PATH);
 const spaisAuthConfigured = Boolean(
   (process.env.SPAIS_AUTH_JWKS_URL || process.env.SPAIS_AUTH_HS256_SECRET) &&
   process.env.SPAIS_AUTH_ISSUER && process.env.SPAIS_AUTH_AUDIENCE
@@ -482,6 +484,72 @@ const server = createServer(async (req, res) => {
       if (error.code === 'invalid_incident_transition') return json(res, 409, { error: error.code, details: error.validationErrors || [] });
       console.error('SPAIS incident request failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'incident_request_failed' });
+    }
+  }
+
+  // SOP/policy versions are site-scoped, immutable after approval, and independently approved.
+  const sopRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/sops(?:\/([^/]+))?$/);
+  if (sopRoute) {
+    const sopIdSegment = sopRoute[2];
+    const allowedMethods = sopIdSegment ? ['GET', 'PATCH'] : ['GET', 'POST'];
+    if (!allowedMethods.includes(req.method)) return json(res, 405, { error: 'method_not_allowed' }, { allow: allowedMethods.join(', ') });
+    let organizationId;
+    let sopId;
+    try {
+      organizationId = decodeURIComponent(sopRoute[1]);
+      sopId = sopIdSegment ? decodeURIComponent(sopIdSegment) : undefined;
+    } catch { return json(res, 400, { error: 'invalid_resource_id' }); }
+    if (!isResourceId(organizationId) || (sopId && !isResourceId(sopId))) return json(res, 400, { error: 'invalid_resource_id' });
+    if (!spaisAuthConfigured || !resourceStore.configured || !sopStore.configured) {
+      return json(res, 503, { error: 'sop_api_not_enabled', message: 'Configure trusted bearer-token verification and SPAIS_EVENTS_DB_PATH before using SOP APIs.' });
+    }
+    let input;
+    let siteId = url.searchParams.get('siteId') || undefined;
+    if (req.method === 'POST' || req.method === 'PATCH') {
+      try { input = await readJsonBody(req, 20 * 1024); }
+      catch (error) {
+        const status = error.code === 'request_body_too_large' ? 413 : 400;
+        return json(res, status, { error: error.code || 'invalid_request_body' });
+      }
+      const validation = req.method === 'POST' ? validateSopInput(input) : validateSopTransition(input);
+      if (!validation.valid) return json(res, 400, { error: req.method === 'POST' ? 'invalid_sop' : 'invalid_sop_transition', details: validation.errors });
+      if (req.method === 'POST') siteId = input.siteId;
+    }
+    if (!isResourceId(siteId)) return json(res, 400, { error: 'site_id_required' });
+    const action = req.method === 'GET' ? 'sop:read'
+      : req.method === 'PATCH' && input.status === 'approved' ? 'sop:approve' : 'sop:manage';
+    const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
+    if (!authentication.authenticated) return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
+    const authorization = authorizeSpaisAction({ principal: authentication.principal, organizationId, siteId, action });
+    if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
+    try {
+      const site = await resourceStore.get({ organizationId, resourceType: 'site', resourceId: siteId });
+      if (!site || site.status !== 'active') return json(res, 404, { error: 'site_not_found' });
+      if (req.method === 'POST') {
+        const sop = await sopStore.create({ organizationId, actorId: authentication.principal.subjectId, input });
+        return json(res, 201, { sop });
+      }
+      if (req.method === 'PATCH') {
+        const sop = await sopStore.transition({
+          organizationId, siteId, sopId, actorId: authentication.principal.subjectId,
+          status: input.status, note: input.note
+        });
+        return json(res, 200, { sop });
+      }
+      if (sopId) {
+        const sop = await sopStore.get({ organizationId, siteId, sopId });
+        return sop ? json(res, 200, { sop }) : json(res, 404, { error: 'sop_not_found' });
+      }
+      const requestedLimit = Number(url.searchParams.get('limit') || 100);
+      const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 100;
+      const sops = await sopStore.list({ organizationId, siteId, limit });
+      return json(res, 200, { organizationId, siteId, sops, count: sops.length, limit });
+    } catch (error) {
+      if (error.code === 'sop_not_found') return json(res, 404, { error: 'sop_not_found' });
+      if (error.code === 'sop_self_approval_denied') return json(res, 409, { error: error.code });
+      if (error.code === 'invalid_sop_transition') return json(res, 409, { error: error.code, details: error.validationErrors || [] });
+      console.error('SPAIS SOP request failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'sop_request_failed' });
     }
   }
 

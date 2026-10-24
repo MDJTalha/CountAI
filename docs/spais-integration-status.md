@@ -50,14 +50,14 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - The agent accepts only configured endpoint URLs, rejects URL-embedded credentials and secret-like query parameters, supports explicit HTTP opt-in for customer-approved local recorder endpoints, and never logs credentials or payloads.
 - Recorder coverage reports remain `reported_not_independently_verified`. This generic HTTP adapter is not a vendor-specific ONVIF/NVR integration and is not pilot-accepted or production-approved until customer lab validation.
 
-## Incident lifecycle API — implementation branch, awaiting CI and review
+## Incident lifecycle API — implemented on main
 - Added authenticated, site-scoped incident create/read/list and lifecycle-transition endpoints under `/api/v1/organizations/:organizationId/incidents`.
 - Uses trusted bearer identity and server-enforced `incident:read` / `incident:manage` permissions; site must exist and be active.
 - Persists incidents in SQLite with an audit record written in the same transaction as creation or transition.
 - Lifecycle is explicit: open → acknowledged → investigating → resolved; resolved incidents may be reopened with a required operator note. Invalid transitions fail with HTTP 409.
 - Strict request schemas reject caller-supplied organization/actor IDs and any caller-supplied evidence-verification state.
 - Recorder-coverage-origin incidents are labelled `reported_not_independently_verified`; the lifecycle API cannot promote signed reports to independently verified recording evidence.
-- Added HTTP integration coverage for authentication, tenant/site/permission denial, schema spoofing, transition ordering, reopen, and audit history. The full CI run for this branch is still required before considering this implemented on main.
+- Added HTTP integration coverage for authentication, tenant/site/permission denial, schema spoofing, transition ordering, reopen, and audit history. Keep this marked code-implemented until full CI, security review, and controlled customer validation evidence are recorded.
 - This is a single-host SQLite pilot foundation, not a production incident-management deployment; backup/retention operations, notification delivery, deduplication policy, and customer acceptance remain open.
 
 ## Not yet implemented or verified
@@ -69,9 +69,19 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Connector public-key rotation is atomic: the prior enrolled key is revoked in the same transaction that activates the replacement. Explicit connector revocation invalidates active/pending enrollments and is audited; telemetry fails closed afterward.
 - Production-grade rate limiting/abuse controls, operational key management, and deployment monitoring.
 - Vendor-specific ONVIF/NVR adapters, independently verified recorder-side recording coverage evidence, durable offline store-and-forward, and customer lab acceptance.
-- SOP/policy governance.
+- SOP/policy governance API is being implemented in the current feature branch; it is not yet merged or CI-verified.
 - Governed model candidate evaluation, approval and promotion.
 - Real-camera lab or customer pilot acceptance.
+
+
+## SOP/policy governance — implementation branch
+- Adds versioned site-scoped SOP/policy records under `/api/v1/organizations/:organizationId/sops`.
+- Each new record starts as a draft; versions increment per organization/site/policy ID, preserving prior approved versions rather than overwriting them.
+- Lifecycle: draft → in_review → approved → retired; transitions require an operator note and create an audit event in the same SQLite transaction.
+- Approval uses a distinct `sop:approve` permission and rejects self-approval by the version creator. Approved versions cannot be returned to draft or edited; revisions require a new version.
+- Strict schema validation rejects client-supplied tenant, actor, version, status, or approval fields. The API is fail-closed until trusted bearer verification and SQLite storage are configured.
+- Automated HTTP tests cover authentication, scope and permission denial, spoofed fields, independent approval, immutable approved versions, version incrementing, and audit history. This remains pending CI and review until the branch checks finish.
+- This is a single-host SQLite foundation; workflow UX, policy-to-incident linkage, retention operations, and customer acceptance remain future work.
 
 ## Safety and integration rules
 1. Preserve local-first processing; raw frames/video do not leave the customer environment by default.
