@@ -71,7 +71,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
       const siteResponse = await fetch(resourcePath('sites') + '?limit=100', { headers: headers(), cache: 'no-store' });
       const siteBody = await readResponse<{ resources: Resource[] }>(siteResponse);
       setSites(siteBody.resources);
-      const effectiveSite = siteId.trim() || siteBody.resources[0]?.id || '';
+      const effectiveSite = siteBody.resources.some(site => site.id === siteId.trim()) ? siteId.trim() : (siteBody.resources[0]?.id || '');
       if (effectiveSite) {
         setSiteId(effectiveSite);
         const query = '?siteId=' + encodeURIComponent(effectiveSite) + '&limit=100';
@@ -96,7 +96,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
     } catch (error) {
       setIsError(true);
       setMessage(error instanceof Error ? error.message : 'Could not load the authorized operations workspace.');
-      setCameras([]); setConnectors([]); setEvents([]);
+      setSites([]); setSiteId(''); setCameras([]); setConnectors([]); setEvents([]);
     } finally { setBusy(false); }
   }
   async function loadSiteResources(nextSiteId: string) {
@@ -152,7 +152,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
     <div className="ops-connect-panel">
       <div className="ops-panel-title"><div><Database size={18}/><div><h2>Trusted connection</h2><p>Credentials remain in component memory and are not saved to browser storage.</p></div></div><button className="primary-button" onClick={() => void loadAll()} disabled={busy}><RefreshCw size={15} className={busy ? 'spin' : ''}/>{busy ? 'Loading…' : 'Connect & refresh'}</button></div>
       <div className="ops-connection-fields">
-        <label>Organization ID<input value={organizationId} onChange={e => setOrganizationId(e.target.value)} placeholder="e.g. org-acme" autoComplete="off"/></label>
+        <label>Organization ID<input value={organizationId} onChange={e => { setOrganizationId(e.target.value); setSiteId(''); setSites([]); setCameras([]); setConnectors([]); setEvents([]); setMessage('Organization changed. Refresh to load records authorized for the new organization.'); setIsError(false); }} placeholder="e.g. org-acme" autoComplete="off"/></label>
         <label>Active site<select value={siteId} onChange={e => void loadSiteResources(e.target.value)}><option value="">Choose an authorized site</option>{sites.map(site => <option key={site.id} value={site.id}>{site.name} · {site.id}</option>)}</select></label>
         <label className="ops-token-field">Bearer token<input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="Paste a trusted token" autoComplete="off" spellCheck={false}/></label>
       </div>
