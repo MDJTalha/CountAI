@@ -30,6 +30,15 @@ test('live view clearly refuses to claim a feed until a stream adapter is connec
   assert.match(app, /will not scan the network, guess camera credentials/);
 });
 
+test('camera registration captures compatibility metadata without accepting secrets', () => {
+  assert.match(readme, /metadata/i);
+  assert.match(readme, /RTSP/i);
+  assert.match(app, /cameraProtocol/);
+  assert.match(app, /cameraTransport/);
+  assert.match(app, /Do not enter stream URLs, passwords, tokens, or private keys here/);
+  assert.match(app, /integrationState: 'not_configured'/);
+});
+
 test('camera and recorder integration targets are represented honestly', () => {
   for (const label of ['IP camera', 'NVR / DVR', 'ONVIF', 'RTSP / vendor API']) assert.ok(app.includes(label));
   assert.match(app, /Bluetooth is generally for setup\/provisioning/);
