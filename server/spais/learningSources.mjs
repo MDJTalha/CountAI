@@ -97,17 +97,26 @@ export function createSqliteLearningSourceStore({
         );
         CREATE INDEX IF NOT EXISTS idx_countai_learning_sources_scope
           ON countai_learning_sources(organization_id, site_id, sequence DESC);
+        CREATE TABLE IF NOT EXISTS countai_learning_source_audit (
+          sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_id TEXT NOT NULL,
+          organization_id TEXT NOT NULL,
+          site_id TEXT NOT NULL,
+          actor_id TEXT NOT NULL,
+          action TEXT NOT NULL,
+          occurred_at TEXT NOT NULL
+        );
       `);
       return database;
     })();
     return databasePromise;
   }
-  function map(row) {
+  function map(row, includeText = false) {
     if (!row) return null;
     return {
       id: row.id, organizationId: row.organization_id, siteId: row.site_id,
       sourceType: row.source_type, title: row.title, description: row.description,
-      contentText: row.content_text, fileName: row.file_name, mimeType: row.mime_type,
+      contentText: includeText ? row.content_text : undefined, fileName: row.file_name, mimeType: row.mime_type,
       sha256: row.sha256, byteSize: row.byte_size, cameraId: row.camera_id,
       observedAt: row.observed_at, labels: JSON.parse(row.labels_json), status: row.status,
       createdBy: row.created_by, createdAt: row.created_at,
@@ -150,10 +159,15 @@ export function createSqliteLearningSourceStore({
         // Plain-text formats are indexed as text; binary formats remain quarantined assets.
         if (['text/plain','text/markdown','text/csv','application/json'].includes(input.mimeType)) {
           contentText = bytes.toString('utf8');
+          if (Buffer.byteLength(contentText, 'utf8') > MAX_TEXT) {
+            try { const { unlink } = await import('node:fs/promises'); await unlink(mediaPath); } catch {}
+            throw fail('document_text_too_large');
+          }
         }
       }
       const status = input.sourceType === 'observation' || contentText ? 'ready_for_review' : 'awaiting_annotation';
       try {
+        database.exec('BEGIN IMMEDIATE');
         database.prepare(`
           INSERT INTO countai_learning_sources
           (id,organization_id,site_id,source_type,title,description,content_text,file_name,mime_type,media_path,sha256,byte_size,camera_id,observed_at,labels_json,status,created_by,created_at,consent_confirmed)
@@ -162,16 +176,20 @@ export function createSqliteLearningSourceStore({
           (input.description || '').trim(), contentText, input.fileName || null, input.mimeType || null,
           mediaPath, sha256, byteSize, input.cameraId || null, input.observedAt || createdAt,
           JSON.stringify(input.labels || []), status, (principal.subjectId || principal.sub || 'unknown-actor'), createdAt);
+        database.prepare('INSERT INTO countai_learning_source_audit (source_id,organization_id,site_id,actor_id,action,occurred_at) VALUES (?,?,?,?,?,?)')
+          .run(id, organizationId, input.siteId, (principal.subjectId || principal.sub || 'unknown-actor'), 'learning_source.ingested', createdAt);
+        database.exec('COMMIT');
       } catch (error) {
+        try { database.exec('ROLLBACK'); } catch {}
         if (mediaPath) { try { const { unlink } = await import('node:fs/promises'); await unlink(mediaPath); } catch {} }
         throw error;
       }
-      return map(database.prepare('SELECT * FROM countai_learning_sources WHERE id = ?').get(id));
+      return map(database.prepare('SELECT * FROM countai_learning_sources WHERE id = ?').get(id), true);
     },
     async list({ organizationId, siteId, limit = 100 }) {
       const database = await db();
       return database.prepare('SELECT * FROM countai_learning_sources WHERE organization_id = ? AND site_id = ? ORDER BY sequence DESC LIMIT ?')
-        .all(organizationId, siteId, Math.max(1, Math.min(100, limit))).map(map);
+        .all(organizationId, siteId, Math.max(1, Math.min(100, limit))).map(row => map(row, false));
     }
   };
 }
