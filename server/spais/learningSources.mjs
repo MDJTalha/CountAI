@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, writeFile, chmod } from 'node:fs/promises';
+import { mkdir, writeFile, chmod, unlink } from 'node:fs/promises';
 import { dirname, resolve, join } from 'node:path';
 import { isResourceId } from './contracts.mjs';
 
@@ -190,6 +190,77 @@ export function createSqliteLearningSourceStore({
       const database = await db();
       return database.prepare('SELECT * FROM countai_learning_sources WHERE organization_id = ? AND site_id = ? ORDER BY sequence DESC LIMIT ?')
         .all(organizationId, siteId, Math.max(1, Math.min(100, limit))).map(row => map(row, false));
+    },
+    async delete({ organizationId, siteId, sourceId, actorId, action = 'learning_source.deleted' }) {
+      if (!isResourceId(organizationId) || !isResourceId(siteId) || !isResourceId(sourceId) ||
+          typeof actorId !== 'string' || !actorId.trim() || !['learning_source.deleted', 'learning_source.retention_expired'].includes(action)) {
+        throw fail('invalid_learning_source_delete');
+      }
+      const database = await db();
+      // Serialize the existence check, media cleanup, record deletion and audit
+      // write. This prevents concurrent delete/expiry calls from producing
+      // duplicate audit entries or reporting a second deletion as successful.
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        const row = database.prepare('SELECT id, media_path FROM countai_learning_sources WHERE organization_id = ? AND site_id = ? AND id = ?')
+          .get(organizationId, siteId, sourceId);
+        if (!row) {
+          database.exec('ROLLBACK');
+          return { deleted: false, mediaCleanupPending: false };
+        }
+        // If cleanup fails, preserve the source row and roll back so the
+        // operation can be retried without losing the media reference.
+        if (row.media_path) {
+          try { await unlink(row.media_path); }
+          catch (error) {
+            if (error.code !== 'ENOENT') throw Object.assign(fail('learning_source_media_cleanup_failed'), { cause: error });
+          }
+        }
+        const occurredAt = new Date().toISOString();
+        database.prepare('DELETE FROM countai_learning_sources WHERE organization_id = ? AND site_id = ? AND id = ?')
+          .run(organizationId, siteId, sourceId);
+        database.prepare('INSERT INTO countai_learning_source_audit (source_id,organization_id,site_id,actor_id,action,occurred_at) VALUES (?,?,?,?,?,?)')
+          .run(sourceId, organizationId, siteId, actorId, action, occurredAt);
+        database.exec('COMMIT');
+        return { deleted: true, mediaCleanupPending: false };
+      } catch (error) {
+        try { database.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+    },
+    async purgeExpired({ retentionDays = Number(process.env.COUNTAI_LEARNING_SOURCE_RETENTION_DAYS || 0), now = Date.now() } = {}) {
+      if (!Number.isInteger(retentionDays) || retentionDays < 0 || retentionDays > 3650 || !Number.isFinite(now)) {
+        throw fail('invalid_learning_source_retention');
+      }
+      if (retentionDays === 0) return { deleted: 0, mediaCleanupPending: 0, disabled: true };
+      const database = await db();
+      const cutoff = new Date(now - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+      const expired = database.prepare('SELECT id, organization_id, site_id, created_by FROM countai_learning_sources WHERE created_at < ? ORDER BY sequence ASC')
+        .all(cutoff);
+      let deleted = 0;
+      let mediaCleanupPending = 0;
+      let failed = 0;
+      for (const row of expired) {
+        try {
+          const result = await this.delete({
+            organizationId: row.organization_id, siteId: row.site_id, sourceId: row.id,
+            actorId: 'system-retention', action: 'learning_source.retention_expired'
+          });
+          if (result.deleted) deleted += 1;
+          if (result.mediaCleanupPending) mediaCleanupPending += 1;
+        } catch {
+          // Keep processing the batch; one unremovable media file must not
+          // prevent other expired sources from being cleaned up.
+          failed += 1;
+        }
+      }
+      return { deleted, mediaCleanupPending, failed, disabled: false, retentionDays, cutoff };
+    },
+    async close() {
+      if (!databasePromise) return;
+      const database = await databasePromise;
+      database.close();
+      databasePromise = undefined;
     }
   };
 }

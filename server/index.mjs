@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { applySecurityHeaders, createApiRateLimiter, getClientRateLimitKey } from './securityControls.mjs';
 import { fileURLToPath } from 'node:url';
 import { extname, join, normalize } from 'node:path';
 import { createReadStream, existsSync, statSync } from 'node:fs';
@@ -20,7 +21,22 @@ import {
 } from './spais/operationalEvents.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
-const port = Number(process.env.PORT || 8787);
+function positiveIntegerSetting(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+  return value;
+}
+const port = positiveIntegerSetting('PORT', 8787);
+const apiRateLimiter = createApiRateLimiter({
+  windowMs: positiveIntegerSetting('COUNTAI_RATE_LIMIT_WINDOW_MS', 60_000),
+  apiLimit: positiveIntegerSetting('COUNTAI_API_RATE_LIMIT', 120),
+  writeLimit: positiveIntegerSetting('COUNTAI_WRITE_RATE_LIMIT', 30)
+});
+const hstsEnabled = process.env.COUNTAI_ENABLE_HSTS === 'true';
 const operationalEventStore = process.env.SPAIS_EVENTS_DB_PATH
   ? createSqliteOperationalEventStore(process.env.SPAIS_EVENTS_DB_PATH)
   : createOperationalEventStore();
@@ -38,6 +54,14 @@ const spaisAuthConfigured = Boolean(
   process.env.SPAIS_AUTH_ISSUER && process.env.SPAIS_AUTH_AUDIENCE
 );
 const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.webmanifest':'application/manifest+json', '.png':'image/png', '.ico':'image/x-icon' };
+function staticCacheControl(file) {
+  const name = file.slice(file.lastIndexOf('/') + 1);
+  // Vite's content-hashed assets are immutable; entry HTML, service worker,
+  // manifest and unhashed public files must revalidate after a deployment.
+  return /[-.][A-Za-z0-9_-]{8,}\\.(?:js|css|woff2?|png|svg)$/i.test(name)
+    ? 'public, max-age=31536000, immutable'
+    : 'no-cache';
+}
 function json(res, status, body, extraHeaders = {}) {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -89,7 +113,22 @@ async function authorizeEventRequest(req, organizationId, siteId, action) {
   return { principal: authentication.principal };
 }
 const server = createServer(async (req, res) => {
+  applySecurityHeaders(res, { enableHsts: hstsEnabled });
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+
+  // Health probes remain available to load balancers. All other API routes are
+  // bounded per socket peer; write-heavy requests use a stricter separate budget.
+  if (url.pathname.startsWith('/api/') && url.pathname !== '/api/health') {
+    const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || 'GET');
+    const rate = apiRateLimiter.check({ key: getClientRateLimitKey(req), isWrite });
+    res.setHeader('x-ratelimit-limit', String(rate.limit));
+    res.setHeader('x-ratelimit-remaining', String(rate.remaining));
+    res.setHeader('x-ratelimit-reset', String(Math.ceil(rate.resetAt / 1000)));
+    if (!rate.allowed) {
+      res.setHeader('retry-after', String(rate.retryAfterSeconds));
+      return json(res, 429, { error: 'rate_limit_exceeded', retryAfterSeconds: rate.retryAfterSeconds });
+    }
+  }
   if (url.pathname === '/api/health') return json(res, 200, {ok:true, service:'countai-api', cloudRecognitionConfigured:false});
   if (url.pathname === '/api/v1/spais/contracts' && req.method === 'GET') {
     return json(res, 200, getSpaisContractManifest({
@@ -712,13 +751,18 @@ const server = createServer(async (req, res) => {
   }
 
   // Learning sources are tenant/site scoped; uploaded media is stored on the customer-controlled host.
-  const learningSourcesRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/learning-sources$/);
+  const learningSourcesRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/learning-sources(?:\/([^/]+))?$/);
   if (learningSourcesRoute) {
-    if (!['GET', 'POST'].includes(req.method)) return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET, POST' });
+    const sourceIdSegment = learningSourcesRoute[2];
+    const allowedMethods = sourceIdSegment ? ['DELETE'] : ['GET', 'POST'];
+    if (!allowedMethods.includes(req.method)) return json(res, 405, { error: 'method_not_allowed' }, { allow: allowedMethods.join(', ') });
     let organizationId;
-    try { organizationId = decodeURIComponent(learningSourcesRoute[1]); }
-    catch { return json(res, 400, { error: 'invalid_resource_id' }); }
-    if (!isResourceId(organizationId)) return json(res, 400, { error: 'invalid_resource_id' });
+    let sourceId;
+    try {
+      organizationId = decodeURIComponent(learningSourcesRoute[1]);
+      sourceId = sourceIdSegment ? decodeURIComponent(sourceIdSegment) : undefined;
+    } catch { return json(res, 400, { error: 'invalid_resource_id' }); }
+    if (!isResourceId(organizationId) || (sourceId && !isResourceId(sourceId))) return json(res, 400, { error: 'invalid_resource_id' });
     const siteId = url.searchParams.get('siteId') || undefined;
     if (!isResourceId(siteId)) return json(res, 400, { error: 'site_id_required' });
     if (!spaisAuthConfigured || !resourceStore.configured || !learningSourceStore.configured) {
@@ -726,10 +770,20 @@ const server = createServer(async (req, res) => {
     }
     const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
     if (!authentication.authenticated) return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
-    const action = req.method === 'GET' ? 'model:read' : 'model:propose';
+    const action = req.method === 'GET' ? 'model:read'
+      : req.method === 'DELETE' ? 'model:manage' : 'model:propose';
     const authorization = authorizeSpaisAction({ principal: authentication.principal, organizationId, siteId, action });
     if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
     try {
+      const site = await resourceStore.get({ organizationId, resourceType: 'site', resourceId: siteId });
+      if (!site || site.status !== 'active') return json(res, 404, { error: 'site_not_found' });
+      if (req.method === 'DELETE') {
+        const result = await learningSourceStore.delete({
+          organizationId, siteId, sourceId, actorId: authentication.principal.subjectId
+        });
+        if (!result.deleted) return json(res, 404, { error: 'learning_source_not_found' });
+        return json(res, 200, { sourceId, deleted: true, mediaCleanupPending: result.mediaCleanupPending });
+      }
       if (req.method === 'GET') {
         const requestedLimit = Number(url.searchParams.get('limit') || 100);
         const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 100;
@@ -748,6 +802,8 @@ const server = createServer(async (req, res) => {
     } catch (error) {
       if (error.code === 'invalid_learning_source') return json(res, 400, { error: error.code, details: error.validationErrors || [] });
       if (error.code === 'document_text_too_large') return json(res, 413, { error: error.code });
+      if (error.code === 'invalid_learning_source_delete') return json(res, 400, { error: error.code });
+      if (error.code === 'learning_source_media_cleanup_failed') return json(res, 503, { error: error.code, retryable: true });
       if (['invalid_or_oversized_file_payload','file_signature_mismatch'].includes(error.code)) return json(res, 400, { error: error.code });
       console.error('CountAI learning source request failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'learning_source_request_failed' });
@@ -894,7 +950,17 @@ const server = createServer(async (req, res) => {
   if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
   if (!existsSync(file)) file = join(root, 'index.html');
   if (!existsSync(file)) { res.writeHead(503, {'content-type':'text/plain'}); return res.end('SPAIS has not been built. Run npm run build first.'); }
-  res.writeHead(200, {'content-type':mime[extname(file)] || 'application/octet-stream','x-content-type-options':'nosniff','referrer-policy':'strict-origin-when-cross-origin'});
+  res.writeHead(200, {
+    'content-type': mime[extname(file)] || 'application/octet-stream',
+    'cache-control': staticCacheControl(file),
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'strict-origin-when-cross-origin'
+  });
   createReadStream(file).pipe(res);
 });
-server.listen(port, '0.0.0.0', () => console.log(`SPAIS API listening on ${port}`));
+// Bound connection/header handling to reduce slow-client resource exhaustion.
+server.headersTimeout = positiveIntegerSetting('COUNTAI_HEADERS_TIMEOUT_MS', 15_000);
+server.requestTimeout = positiveIntegerSetting('COUNTAI_REQUEST_TIMEOUT_MS', 120_000);
+server.keepAliveTimeout = positiveIntegerSetting('COUNTAI_KEEPALIVE_TIMEOUT_MS', 5_000);
+server.maxHeadersCount = 100;
+server.listen(port, '0.0.0.0', () => console.log(`CountAI API listening on ${port}`));

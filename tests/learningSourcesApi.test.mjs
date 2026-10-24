@@ -45,7 +45,21 @@ before(async () => {
   const deadline = Date.now() + 8000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error('Server exited before readiness. Output:\n' + output);
-    try { if ((await fetch(baseUrl + '/api/health')).ok) return; } catch {}
+    try {
+      if ((await fetch(baseUrl + '/api/health')).ok) {
+        const siteResponse = await fetch(baseUrl + '/api/v1/organizations/org-1/sites', {
+          method: 'POST',
+          headers: { ...auth(), 'content-type': 'application/json' },
+          body: JSON.stringify({ id: 'site-1', name: 'Learning Test Site', status: 'active' })
+        });
+        if (![201, 409].includes(siteResponse.status)) {
+          throw new Error('Unable to provision test site: ' + siteResponse.status + ' ' + await siteResponse.text());
+        }
+        return;
+      }
+    } catch (error) {
+      if (String(error).includes('Unable to provision test site')) throw error;
+    }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error('Server did not become ready:\n' + output);
@@ -120,4 +134,39 @@ test('media ingestion enforces signatures, size caps and explicit authorization'
     contentText: 'Should not be accepted', consentConfirmed: false
   });
   assert.equal(noConsent.status, 400);
+});
+
+test('learning-source deletion requires model management permission and preserves scoped behavior', async () => {
+  const created = await post({
+    siteId: 'site-1', sourceType: 'observation', title: 'Observation to delete',
+    contentText: 'This record should be deleted by an authorized manager.',
+    consentConfirmed: true
+  });
+  assert.equal(created.status, 201, output);
+  const source = (await created.json()).source;
+  const url = baseUrl + '/api/v1/organizations/org-1/learning-sources/' + source.id + '?siteId=site-1';
+
+  const denied = await fetch(url, { method: 'DELETE', headers: auth() });
+  assert.equal(denied.status, 403);
+
+  const deleted = await fetch(url, {
+    method: 'DELETE',
+    headers: auth({ permissions: ['site:read', 'site:manage', 'model:read', 'model:propose', 'model:manage'] })
+  });
+  assert.equal(deleted.status, 200, output);
+  assert.deepEqual(await deleted.json(), {
+    sourceId: source.id,
+    deleted: true,
+    mediaCleanupPending: false
+  });
+
+  const list = await fetch(baseUrl + '/api/v1/organizations/org-1/learning-sources?siteId=site-1', { headers: auth() });
+  assert.equal(list.status, 200);
+  assert.equal((await list.json()).sources.some(item => item.id === source.id), false);
+
+  const wrongSite = await fetch(url.replace('site-1', 'site-2'), {
+    method: 'DELETE',
+    headers: auth({ permissions: ['site:read', 'site:manage', 'model:read', 'model:propose', 'model:manage'] })
+  });
+  assert.equal(wrongSite.status, 403);
 });
