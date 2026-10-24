@@ -182,6 +182,24 @@ test('enrolled connector telemetry verifies signatures, enforces freshness and r
   const coverageReceipt = (await coverageResponse.json()).receipt;
   assert.equal(coverageReceipt.interpretation, 'reported_not_independently_verified');
 
+  const unauthenticatedRead = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/connectors/connector-1/telemetry?siteId=site-1'
+  );
+  assert.equal(unauthenticatedRead.status, 401);
+  const telemetryRead = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/connectors/connector-1/telemetry?siteId=site-1&limit=10',
+    { headers: authHeaders() }
+  );
+  assert.equal(telemetryRead.status, 200);
+  const telemetryBody = await telemetryRead.json();
+  assert.equal(telemetryBody.count, 3);
+  assert.ok(telemetryBody.telemetry.some(item => item.interpretation === 'reported_not_independently_verified'));
+  const crossTenantRead = await fetch(
+    baseUrl + '/api/v1/organizations/org-2/connectors/connector-1/telemetry?siteId=site-1',
+    { headers: authHeaders() }
+  );
+  assert.equal(crossTenantRead.status, 403);
+
   const unsafe = makeMessage('connector.heartbeat', { status: 'healthy', frameData: 'should-not-be-accepted' });
   const unsafeResponse = await post(telemetryPath, unsafe, { 'content-type': 'application/json' });
   assert.equal(unsafeResponse.status, 400);
