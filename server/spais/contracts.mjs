@@ -39,6 +39,7 @@ const ALLOWED_ACTIONS = new Set([
   "model:read",
   "model:propose",
   "model:approve",
+  "model:evaluate",
   "audit:read"
 ]);
 
