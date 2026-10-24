@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Activity, Camera, CircleAlert, Database, Plus, RefreshCw, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
 
@@ -49,6 +49,15 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
   const [enrollmentConnectorId, setEnrollmentConnectorId] = useState('');
   const [publicKeyText, setPublicKeyText] = useState('');
   const [enrollmentChallenge, setEnrollmentChallenge] = useState<EnrollmentChallenge | null>(null);
+  const scopeKey = JSON.stringify([organizationId.trim(), siteId.trim(), token.trim()]);
+  const currentScopeKey = useRef(scopeKey);
+  currentScopeKey.current = scopeKey;
+
+  function clearScopedRecords(messageText: string) {
+    setSites([]); setCameras([]); setConnectors([]); setEvents([]);
+    setEnrollmentChallenge(null); setEnrollmentConnectorId('');
+    setMessage(messageText); setIsError(false);
+  }
 
   if (!visible) return null;
 
@@ -70,10 +79,12 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
   }
   async function loadAll() {
     if (!validateConnection()) return;
+    const requestIdentity = JSON.stringify([organizationId.trim(), token.trim()]);
     setBusy(true); setIsError(false); setMessage('Loading authorized sites and service records…');
     try {
       const siteResponse = await fetch(resourcePath('sites') + '?limit=100', { headers: headers(), cache: 'no-store' });
       const siteBody = await readResponse<{ resources: Resource[] }>(siteResponse);
+      if (requestIdentity !== JSON.stringify([organizationId.trim(), token.trim()]) || requestIdentity !== JSON.stringify([currentScopeKey.current && JSON.parse(currentScopeKey.current)[0], JSON.parse(currentScopeKey.current)[2]])) return;
       setSites(siteBody.resources);
       const effectiveSite = siteBody.resources.some(site => site.id === siteId.trim()) ? siteId.trim() : (siteBody.resources[0]?.id || '');
       if (effectiveSite) {
@@ -89,6 +100,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
           readResponse<{ resources: Resource[] }>(connectorResponse),
           readResponse<{ events: OperationalEvent[] }>(eventResponse)
         ]);
+        if (requestIdentity !== JSON.stringify([organizationId.trim(), token.trim()]) || JSON.stringify([organizationId.trim(), effectiveSite, token.trim()]) !== currentScopeKey.current) return;
         setCameras(cameraBody.resources);
         setConnectors(connectorBody.resources);
         setEvents(eventBody.events);
@@ -105,7 +117,9 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
   }
   async function loadSiteResources(nextSiteId: string) {
     setSiteId(nextSiteId); setEnrollmentChallenge(null); setEnrollmentConnectorId('');
+    setCameras([]); setConnectors([]); setEvents([]);
     if (!organizationId.trim() || !token.trim() || !nextSiteId) return;
+    const requestScope = JSON.stringify([organizationId.trim(), nextSiteId, token.trim()]);
     setBusy(true); setIsError(false); setMessage('Loading records for the selected site…');
     try {
       const query = '?siteId=' + encodeURIComponent(nextSiteId) + '&limit=100';
@@ -119,6 +133,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
         readResponse<{ resources: Resource[] }>(connectorResponse),
         readResponse<{ events: OperationalEvent[] }>(eventResponse)
       ]);
+      if (requestScope !== currentScopeKey.current) return;
       setCameras(cameraBody.resources); setConnectors(connectorBody.resources); setEvents(eventBody.events);
       setMessage(`Loaded selected site inventory and ${eventBody.events.length} operational event(s).`);
     } catch (error) {
@@ -129,6 +144,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
     event.preventDefault();
     if (!validateConnection(resourceType !== 'site')) return;
     if (!resourceId.trim() || !resourceName.trim()) { setIsError(true); setMessage('Resource ID and display name are required.'); return; }
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false);
     try {
       const collection = resourceType === 'site' ? 'sites' : resourceType === 'camera' ? 'cameras' : 'connectors';
@@ -136,6 +152,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
       await readResponse<{ resource: Resource }>(await fetch(resourcePath(collection), {
         method: 'POST', headers: headers(true), body: JSON.stringify(body)
       }));
+      if (requestScope !== currentScopeKey.current) return;
       setResourceId(''); setResourceName(''); setCreateOpen(false);
       await loadAll();
       setMessage(`${resourceType} metadata created. Inventory registration does not connect a camera or enroll a connector.`);
@@ -153,12 +170,14 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
     if (!publicKeyJwk || typeof publicKeyJwk !== 'object' || Array.isArray(publicKeyJwk)) {
       setIsError(true); setMessage('The public key must be a JSON object.'); return;
     }
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false); setEnrollmentChallenge(null);
     try {
       const url = `/api/v1/organizations/${encodeURIComponent(organizationId.trim())}/connectors/${encodeURIComponent(enrollmentConnectorId)}/enrollment-challenges?siteId=${encodeURIComponent(siteId.trim())}`;
       const body = await readResponse<{ enrollment: EnrollmentChallenge }>(await fetch(url, {
         method: 'POST', headers: headers(true), body: JSON.stringify({ publicKeyJwk }), cache: 'no-store'
       }));
+      if (requestScope !== currentScopeKey.current) return;
       setEnrollmentChallenge(body.enrollment);
       setMessage('One-time enrollment challenge created. Complete proof-of-possession on the customer-controlled connector before it expires.');
     } catch (error) {
@@ -181,7 +200,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
       <div className="ops-connection-fields">
         <label>Organization ID<input value={organizationId} onChange={e => { setOrganizationId(e.target.value); setSiteId(''); setSites([]); setCameras([]); setConnectors([]); setEvents([]); setEnrollmentChallenge(null); setEnrollmentConnectorId(''); setMessage('Organization changed. Refresh to load records authorized for the new organization.'); setIsError(false); }} placeholder="e.g. org-acme" autoComplete="off"/></label>
         <label>Active site<select value={siteId} onChange={e => void loadSiteResources(e.target.value)}><option value="">Choose an authorized site</option>{sites.map(site => <option key={site.id} value={site.id}>{site.name} · {site.id}</option>)}</select></label>
-        <label className="ops-token-field">Bearer token<input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="Paste a trusted token" autoComplete="off" spellCheck={false}/></label>
+        <label className="ops-token-field">Bearer token<input type="password" value={token} onChange={e => { setToken(e.target.value); clearScopedRecords('Token changed. Refresh to load records for the current identity.'); }} placeholder="Paste a trusted token" autoComplete="off" spellCheck={false}/></label>
       </div>
       <div className={`notice ${isError ? 'notice-error' : ''}`} role="status"><Activity size={16}/><span>{message}</span></div>
       {activeSite && <p className="ops-scope-note">Selected site: <strong>{activeSite.name}</strong> · {activeSite.status}. All site-level requests are explicitly scoped.</p>}
