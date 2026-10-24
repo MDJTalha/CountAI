@@ -89,6 +89,12 @@ The first learning-data ingestion stage supports:
 
 Ingested sources are queued for human review/annotation; they are **not automatically trusted training labels**. This stage does not yet extract text from PDFs, run image/video inference on uploaded media, continuously record a live network camera, or train/promote a model. Live recording requires the separate authorized camera/recorder stream adapter. Continuous model improvement requires the next stages: annotation and dataset versioning, training workers, a reproducible deep-learning/ML pipeline, independent holdout evaluation, drift monitoring and governed model promotion. Existing model-candidate/evaluation APIs provide a proposal/evaluation governance boundary, not a training engine.
 
+## Phase 1 foundation hardening
+
+The API now has baseline response security headers, opt-in HSTS for deployments that enforce HTTPS at the public edge, bounded configurable process-local API rate limits, and bounded HTTP header/request/keep-alive timeouts. Security-control unit and HTTP integration tests are included in CI and `npm test`.
+
+Operational configuration, data-retention policy requirements, recovery gates, and production limitations are documented in [Phase 1 Foundation Security](docs/PHASE1_FOUNDATION_SECURITY.md). Important limitations remain: the in-memory limiter is not distributed across server replicas; server-side learning-source deletion and expiry are not yet implemented; production OIDC/secret lifecycle, TLS gateway configuration, backup/restore drills, and independent security assessment still require deployment-specific work.
+
 ## Remaining implementation gates
 
 1. Implement a real camera/recorder adapter with an explicit supported-protocol contract.
