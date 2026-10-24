@@ -7,12 +7,15 @@ import { verifySpaisBearerToken } from './spais/auth.mjs';
 import {
   createOperationalEvent,
   createOperationalEventStore,
+  createSqliteOperationalEventStore,
   validateOperationalEvent
 } from './spais/operationalEvents.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const port = Number(process.env.PORT || 8787);
-const operationalEventStore = createOperationalEventStore();
+const operationalEventStore = process.env.SPAIS_EVENTS_DB_PATH
+  ? createSqliteOperationalEventStore(process.env.SPAIS_EVENTS_DB_PATH)
+  : createOperationalEventStore();
 const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.webmanifest':'application/manifest+json', '.png':'image/png', '.ico':'image/x-icon' };
 function json(res, status, body, extraHeaders = {}) {
   res.writeHead(status, {
