@@ -38,7 +38,7 @@ test('security headers are restrictive without forcing HSTS for local HTTP', () 
   assert.equal(headers.get('x-content-type-options'), 'nosniff');
   assert.equal(headers.get('x-frame-options'), 'DENY');
   assert.equal(headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
-  assert.equal(headers.get('cache-control'), 'no-store');
+  assert.equal(headers.has('cache-control'), false);
   assert.equal(headers.has('strict-transport-security'), false);
   applySecurityHeaders(response, { enableHsts: true });
   assert.match(headers.get('strict-transport-security'), /max-age=31536000/);
