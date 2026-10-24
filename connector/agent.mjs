@@ -3,7 +3,7 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalizeConnectorTelemetry } from '../server/spais/connectorTelemetry.mjs';
-import { acknowledgeTelemetry, enqueueTelemetry, readTelemetryQueue } from './offlineQueue.mjs';
+import { acknowledgeTelemetry, enqueueTelemetry, getTelemetryQueueStatus } from './offlineQueue.mjs';
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_RECORDER_RESPONSE_BYTES = 64 * 1024;
@@ -236,17 +236,13 @@ export async function runConnectorOnce(config, { fetchImpl = fetch, now = () => 
     for (const payload of snapshot.recordingCoverage) lastDelivery = await send('recorder.recording_coverage', payload);
   }
 
-  let queuedCount = 0;
-  let deliveryError = null;
-  if (queuePath) {
-    queuedCount = (await readTelemetryQueue(queuePath)).length;
-    deliveryError = lastDelivery.deliveryError || null;
-  }
+  const queueStatus = queuePath ? await getTelemetryQueueStatus(queuePath, now()) : null;
+  const deliveryError = queuePath ? (lastDelivery.deliveryError || null) : null;
   return {
     acceptedCount: results.length,
     results,
     observedAt: now().toISOString(),
-    ...(queuePath ? { queuedCount, deliveryError, deliveryMode: 'durable-at-least-once' } : {})
+    ...(queueStatus ? { ...queueStatus, deliveryError, deliveryMode: 'durable-at-least-once' } : {})
   };
 }
 
@@ -311,7 +307,7 @@ async function main() {
   while (!stopping) {
     try {
       const result = await runConnectorOnce({ ...config, privateKey });
-      process.stdout.write(JSON.stringify({ acceptedCount: result.acceptedCount, queuedCount: result.queuedCount ?? 0, deliveryError: result.deliveryError ?? null, deliveryMode: result.deliveryMode || 'direct', observedAt: result.observedAt }) + '\n');
+      process.stdout.write(JSON.stringify({ acceptedCount: result.acceptedCount, queuedCount: result.queuedCount ?? 0, queuedBytes: result.queuedBytes ?? 0, oldestQueuedAgeSeconds: result.oldestQueuedAgeSeconds ?? 0, deliveryError: result.deliveryError ?? null, deliveryMode: result.deliveryMode || 'direct', observedAt: result.observedAt }) + '\n');
     } catch (error) {
       // Never print tokens, payloads, private-key material, or full URLs that may contain credentials.
       process.stderr.write(JSON.stringify({ error: error.code || 'connector_run_failed' }) + '\n');
