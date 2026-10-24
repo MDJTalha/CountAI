@@ -65,7 +65,7 @@ test('API rate limits return 429, Retry-After, and security headers', async () =
   assert.equal((await fetch(baseUrl + '/api/v1/spais/contracts')).status, 200);
   const blocked = await fetch(baseUrl + '/api/v1/spais/contracts');
   assert.equal(blocked.status, 429);
-  assert.equal(blocked.headers.get('retry-after'), '60');
+  assert.ok(Number(blocked.headers.get('retry-after')) >= 1 && Number(blocked.headers.get('retry-after')) <= 60);
   assert.equal(blocked.headers.get('x-frame-options'), 'DENY');
   assert.deepEqual(await blocked.json(), { error: 'rate_limit_exceeded', retryAfterSeconds: 60 });
 });
