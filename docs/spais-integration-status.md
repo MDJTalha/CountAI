@@ -12,6 +12,11 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Regression coverage for contract versioning, malformed resource IDs, cross-organization/site denial, action permissions, token verification and disabled tenant routes.
 
 ## Implemented in the current open PR
+- Authenticated `GET`/`POST /api/v1/organizations/:organizationId/events` endpoints using the configured trusted bearer-token verifier and server-side organization/site/action authorization.
+- Operational event payload validation, server-assigned actor/organization identity, bounded request/details sizes, and explicit unauthorized/forbidden/error responses.
+- Configurable append-only JSONL event persistence via `SPAIS_EVENTS_FILE`, organization/site filtering, newest-first retrieval (up to 100 events), and a 64 MiB pilot-store limit.
+- The JSONL adapter is explicitly single-host pilot/development storage; production multi-instance use requires a transactional database, backup/retention controls, and operational review.
+- Automated unit and HTTP integration tests for event validation, persistence, cross-tenant/site denial, permission denial, and resistance to client-supplied actor/tenant IDs.
 - Bounded browser-local live-session history and operational event trail.
 - Session start/stop, line-crossing, camera-health and operator count-reset events.
 - Session summaries capture mode, line position, requested/actual resolution, totals, directions, duration, stop reason and retention metadata.
@@ -38,9 +43,9 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 6. Report each capability as planned, implemented, automated-test passed, lab-verified, pilot-accepted or production-approved with evidence.
 
 ## Next implementation gate
-1. Validate the current live-session PR on the latest `main` and fix reproducible failures.
-2. Integrate a trusted identity provider and wire verified principals into tenant/site-scoped routes.
-3. Add durable tenant persistence and negative isolation tests.
-4. Integrate operational events with server persistence without silently replacing browser-local history.
+1. Validate the authenticated operational-event API branch with the complete CI suite and fix reproducible failures.
+2. Replace pilot JSONL persistence with a transactional database adapter before production or multi-instance deployment.
+3. Integrate a production identity provider, key rotation and operational secret management.
+4. Add durable organization/site/camera/connector persistence and negative isolation tests.
 5. Design customer-controlled connector enrollment and recorder-side recording assurance.
 6. Add incident/SOP governance and a governed learning lifecycle.
