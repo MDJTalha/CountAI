@@ -74,3 +74,18 @@ test('supports deletion and recovers safely from corrupt local storage', () => {
   assert.equal(deleteLiveSession(storage, 'session-e'), true);
   assert.equal(deleteLiveSession(storage, 'session-e'), false);
 });
+
+test('count reset clears the current session summary but preserves the audit event', () => {
+  const storage = memoryStorage();
+  startLiveSession(storage, { id: 'session-reset', startedAt: '2026-10-24T03:00:00.000Z' });
+  recordLiveSessionEvent(storage, 'session-reset', 'crossing_counted', {
+    direction: 'A-to-B', category: 'person', trackId: 1
+  }, 'system', '2026-10-24T03:00:01.000Z');
+  recordLiveSessionEvent(storage, 'session-reset', 'count_reset', { reason: 'operator_reset' }, 'operator', '2026-10-24T03:00:02.000Z');
+  const [session] = listLiveSessions(storage);
+  assert.equal(session.totalCrossings, 0);
+  assert.deepEqual(session.totals, {});
+  assert.deepEqual(session.directions, { 'A-to-B': 0, 'B-to-A': 0 });
+  assert.ok(session.events.some(event => event.type === 'crossing_counted'));
+  assert.ok(session.events.some(event => event.type === 'count_reset'));
+});
