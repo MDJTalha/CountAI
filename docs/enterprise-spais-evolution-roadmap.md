@@ -175,11 +175,11 @@ This roadmap is incremental. Each phase must deliver a testable, reviewable slic
 | Phase 1A: versioned event contract | Merged to main | [PR #17](https://github.com/MDJTalha/CountAI/pull/17); CI passed on the exact merged head |
 | Phase 1B: local live-session summaries | Implemented; awaiting main integration | [PR #19](https://github.com/MDJTalha/CountAI/pull/19); bounded local storage, session/crossing/health/reset events, recent-session UI, delete control, and six storage tests |
 | Phase 1C: CI coverage for new suites | Added and verified | [Successful main-targeted CI run](https://github.com/MDJTalha/CountAI/actions/runs/40058761033) explicitly executes `test:operational-events` (7 passing) and `test:live-sessions` (6 passing) |
-| Phase 2: enterprise security contracts | Not started | Begin after Phase 1 PRs are reviewed and the baseline is synchronized |
+| Phase 2: enterprise security contracts | Design drafted; implementation not started | [Domain/security contract](https://github.com/MDJTalha/CountAI/blob/plan/enterprise-spais-evolution/docs/enterprise-domain-contracts.md); next build the versioned types, backend authorization and negative tenant-isolation tests after Phase 1 integration |
 | Phases 3–7 | Not started | Connector, recorder evidence, incident lifecycle, SOP governance, learner and pilot remain gated |
 
 ## Immediate next work item
 
-Finish Phase 1 by confirming CI explicitly executes both new test suites, review the exact PR head, and keep the changes unmerged until that evidence is green. Then prepare Phase 2's versioned organization/site/camera/connector/incident/policy/model/audit contracts and tenant-isolation test matrix. Do not start real NVR access or model training before these foundations and their validation gates are in place.
+Phase 1B is implemented and its main-targeted CI run passed; PR #19 is open for main integration. Next, implement Phase 2's versioned organization/site/camera/connector/incident/policy/model/audit types and backend-enforced tenant isolation tests. The contract design is drafted in `docs/enterprise-domain-contracts.md`. Do not start real NVR access or model training before these foundations and their validation gates are in place.
 
 Local browser validation is still required after the user pulls the accepted changes. A passing hosted build cannot prove real-camera behavior, offline inference, or visual usability.
