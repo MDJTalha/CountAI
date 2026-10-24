@@ -59,3 +59,16 @@ test('constructor fails closed on invalid event data', () => {
     error => error instanceof TypeError && Array.isArray(error.validationErrors)
   );
 });
+
+test('count reset is an explicit operator-only event', () => {
+  const event = createOperationalEvent({
+    ...base,
+    type: 'count_reset',
+    actorType: 'operator',
+    payload: { reason: 'operator_reset' }
+  });
+  assert.equal(validateOperationalEvent(event).valid, true);
+  const invalid = validateOperationalEvent({ ...event, actorType: 'system' });
+  assert.equal(invalid.valid, false);
+  assert.ok(invalid.errors.some(error => error.includes('actorType')));
+});
