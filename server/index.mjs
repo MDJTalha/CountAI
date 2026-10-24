@@ -90,7 +90,7 @@ const server = createServer(async (req, res) => {
 
   // Connector telemetry is authenticated by the enrolled connector's RSA key.
   // These signed reports are not treated as independently verified recorder evidence.
-  const connectorTelemetryRoute = url.pathname.match(/^\\/api\\/v1\\/connectors\\/([^/]+)\\/telemetry$/);
+  const connectorTelemetryRoute = url.pathname.match(/^\/api\/v1\/connectors\/([^/]+)\/telemetry$/);
   if (connectorTelemetryRoute) {
     if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' }, { allow: 'POST' });
     let connectorId;
