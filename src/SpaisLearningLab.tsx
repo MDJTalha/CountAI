@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Beaker, RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react';
 
@@ -49,13 +49,16 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
   const [evaluationPlanText, setEvaluationPlanText] = useState('Use a separate, consented holdout set with no training-data overlap.\nReport precision, recall, false-positive rate, and confidence intervals.\nCompare against the pinned baseline and pre-agreed acceptance thresholds.');
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [evaluationHistory, setEvaluationHistory] = useState<Record<string, Evaluation[]>>({});
+  const scopeKey = JSON.stringify([organizationId.trim(), siteId.trim(), token.trim()]);
+  const currentScopeKey = useRef(scopeKey);
+  currentScopeKey.current = scopeKey;
 
   useEffect(() => {
     setCandidates([]);
     setEvaluationHistory({});
     setMessage('');
     setIsError(false);
-  }, [organizationId, siteId]);
+  }, [organizationId, siteId, token]);
 
   function path() {
     return `/api/v1/organizations/${encodeURIComponent(organizationId.trim())}/model-candidates`;
@@ -67,11 +70,13 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
     if (!organizationId.trim() || !siteId.trim() || !token.trim()) {
       setIsError(true); setMessage('Connect a trusted token and choose an organization and site first.'); return;
     }
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false);
     try {
       const query = new URLSearchParams({ siteId: siteId.trim(), limit: '100' });
       const response = await fetch(path() + '?' + query, { headers: headers(), cache: 'no-store' });
       const body = await readResponse<{ candidates: Candidate[]; count: number }>(response);
+      if (requestScope !== currentScopeKey.current) return;
       setCandidates(body.candidates);
       setMessage(`Loaded ${body.count} learning proposal(s). No model was evaluated or deployed by this registry.`);
     } catch (error) {
@@ -81,6 +86,7 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
   }
   async function loadEvaluations(candidate: Candidate) {
     if (!token.trim()) { setIsError(true); setMessage('A trusted bearer token is required to read evaluation reports.'); return; }
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false);
     try {
       const query = new URLSearchParams({ siteId: siteId.trim(), limit: '100' });
@@ -88,6 +94,7 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
         headers: headers(), cache: 'no-store'
       });
       const body = await readResponse<{ evaluations: Evaluation[]; count: number }>(response);
+      if (requestScope !== currentScopeKey.current) return;
       setEvaluationHistory(current => ({ ...current, [candidate.id]: body.evaluations }));
       setMessage(`Loaded ${body.count} signed evaluation report(s). A passing result is not production approval.`);
     } catch (error) {
@@ -100,6 +107,7 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
     if (evaluationPlan.length < 1 || evaluationPlan.length > 12) {
       setIsError(true); setMessage('The evaluation plan must contain between 1 and 12 non-empty steps.'); return;
     }
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false);
     try {
       const response = await fetch(path(), {
@@ -112,6 +120,7 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
         })
       });
       await readResponse<{ candidate: Candidate }>(response);
+      if (requestScope !== currentScopeKey.current) return;
       setTitle(''); setRationale(''); setProposedVersion(''); setArtifactSha256(''); setEvaluationDatasetSha256('');
       await loadCandidates();
     } catch (error) {
@@ -121,12 +130,14 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
   async function transition(candidate: Candidate, status: CandidateStatus) {
     const note = (notes[candidate.id] || '').trim();
     if (note.length < 3) { setIsError(true); setMessage('Add an audit note of at least 3 characters before changing candidate status.'); return; }
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false);
     try {
       const response = await fetch(path() + '/' + encodeURIComponent(candidate.id) + '?' + new URLSearchParams({ siteId: siteId.trim() }), {
         method: 'PATCH', headers: headers(true), body: JSON.stringify({ status, note })
       });
       await readResponse<{ candidate: Candidate }>(response);
+      if (requestScope !== currentScopeKey.current) return;
       setNotes(current => ({ ...current, [candidate.id]: '' }));
       await loadCandidates();
     } catch (error) {
