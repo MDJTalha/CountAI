@@ -10,7 +10,6 @@ export interface MergeableDetection {
   category: string;
   confidence?: number;
   bbox: [number, number, number, number];
-  [key: string]: unknown;
 }
 
 export function createTileRegions(width: number, height: number, minDimension?: number, minLongestDimension?: number): TileRegion[];
