@@ -9,6 +9,14 @@ type Candidate = {
   changeType: 'model_weights' | 'thresholds' | 'preprocessing' | 'rule_set';
   artifactSha256: string; evaluationDatasetSha256: string; evaluationPlan: string[];
   status: CandidateStatus; createdBy: string; createdAt: string; updatedAt: string; lastNote: string | null;
+  evaluationStatus: 'not_run' | 'passed' | 'failed'; latestEvaluationId: string | null;
+};
+type Evaluation = {
+  id: string; runId: string; evaluatorVersion: string; evaluatorKeyId: string;
+  evaluatedAt: string; receivedAt: string; sampleCount: number; precision: number;
+  recall: number; falsePositiveRate: number; result: 'passed' | 'failed';
+  thresholds: { minSampleCount: number; minPrecision: number; minRecall: number; maxFalsePositiveRate: number };
+  attestationSha256: string;
 };
 type Props = { organizationId: string; siteId: string; token: string };
 
@@ -40,9 +48,11 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
   const [evaluationDatasetSha256, setEvaluationDatasetSha256] = useState('');
   const [evaluationPlanText, setEvaluationPlanText] = useState('Use a separate, consented holdout set with no training-data overlap.\nReport precision, recall, false-positive rate, and confidence intervals.\nCompare against the pinned baseline and pre-agreed acceptance thresholds.');
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [evaluationHistory, setEvaluationHistory] = useState<Record<string, Evaluation[]>>({});
 
   useEffect(() => {
     setCandidates([]);
+    setEvaluationHistory({});
     setMessage('');
     setIsError(false);
   }, [organizationId, siteId]);
@@ -67,6 +77,21 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
     } catch (error) {
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not load learning proposals.');
       setCandidates([]);
+    } finally { setBusy(false); }
+  }
+  async function loadEvaluations(candidate: Candidate) {
+    if (!token.trim()) { setIsError(true); setMessage('A trusted bearer token is required to read evaluation reports.'); return; }
+    setBusy(true); setIsError(false);
+    try {
+      const query = new URLSearchParams({ siteId: siteId.trim(), limit: '100' });
+      const response = await fetch(path() + '/' + encodeURIComponent(candidate.id) + '/evaluations?' + query, {
+        headers: headers(), cache: 'no-store'
+      });
+      const body = await readResponse<{ evaluations: Evaluation[]; count: number }>(response);
+      setEvaluationHistory(current => ({ ...current, [candidate.id]: body.evaluations }));
+      setMessage(`Loaded ${body.count} signed evaluation report(s). A passing result is not production approval.`);
+    } catch (error) {
+      setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not load evaluation reports.');
     } finally { setBusy(false); }
   }
   async function createCandidate(event: FormEvent<HTMLFormElement>) {
@@ -131,11 +156,17 @@ export function SpaisLearningLab({ organizationId, siteId, token }: Props) {
         : candidate.status === 'under_review' ? ['evaluation_pending', 'rejected']
         : candidate.status === 'evaluation_pending' ? ['rejected'] : [];
       return <article className="learning-candidate" key={candidate.id}>
-        <div className="learning-candidate-heading"><div><b>{candidate.title}</b><small>{candidate.baselineVersion} → {candidate.proposedVersion} · {candidate.changeType.replace('_', ' ')}</small></div><span className={`governance-status status-${candidate.status}`}>{statusLabel(candidate.status)}</span></div>
+        <div className="learning-candidate-heading"><div><b>{candidate.title}</b><small>{candidate.baselineVersion} → {candidate.proposedVersion} · {candidate.changeType.replace('_', ' ')}</small></div><div className="learning-status-stack"><span className={`governance-status status-${candidate.status}`}>{statusLabel(candidate.status)}</span><span className={`governance-status ${candidate.evaluationStatus === 'passed' ? 'status-approved' : candidate.evaluationStatus === 'failed' ? 'status-open' : ''}`}>Evaluation: {candidate.evaluationStatus.replace('_', ' ')}</span></div></div>
         <p>{candidate.rationale}</p>
         <small>Artifact {candidate.artifactSha256.slice(0, 12)}… · Holdout {candidate.evaluationDatasetSha256.slice(0, 12)}… · Submitted by {candidate.createdBy}</small>
         <ol>{candidate.evaluationPlan.map((step, index) => <li key={index}>{step}</li>)}</ol>
         {candidate.lastNote && <p className="learning-last-note"><b>Latest review note:</b> {candidate.lastNote}</p>}
+        <div className="learning-evaluation-actions"><button className="subtle-button" type="button" disabled={busy} onClick={() => void loadEvaluations(candidate)}>{busy ? 'Working…' : 'View signed evaluation reports'}</button>{candidate.evaluationStatus === 'passed' && <small>Evaluation thresholds passed; this does not approve a production release.</small>}</div>
+        {evaluationHistory[candidate.id] && <div className="learning-evaluation-history">{evaluationHistory[candidate.id].length ? evaluationHistory[candidate.id].map(evaluation => <div className="learning-evaluation-item" key={evaluation.id}>
+          <div><b>{evaluation.result.toUpperCase()}</b><small>Run {evaluation.runId} · {new Date(evaluation.evaluatedAt).toLocaleString()}</small></div>
+          <p>Samples {evaluation.sampleCount.toLocaleString()} · Precision {(evaluation.precision * 100).toFixed(2)}% · Recall {(evaluation.recall * 100).toFixed(2)}% · False positives {(evaluation.falsePositiveRate * 100).toFixed(2)}%</p>
+          <small>Evaluator {evaluation.evaluatorVersion} ({evaluation.evaluatorKeyId}) · Attestation {evaluation.attestationSha256.slice(0, 16)}…</small>
+        </div>) : <p className="governance-empty">No signed evaluation reports have been recorded for this proposal.</p>}</div>}
         {allowedNext.length > 0 && <div className="learning-transition"><input aria-label={`Audit note for ${candidate.title}`} value={notes[candidate.id] || ''} onChange={event => setNotes(current => ({ ...current, [candidate.id]: event.target.value }))} placeholder="Required audit note (3+ chars)"/>{allowedNext.map(next => <button className={next === 'rejected' ? 'subtle-button' : 'outline-button'} type="button" key={next} disabled={busy} onClick={() => void transition(candidate, next)}>{next === 'under_review' ? 'Submit for review' : next === 'evaluation_pending' ? 'Approve offline evaluation' : 'Reject'}</button>)}</div>}
       </article>;
     }) : <p className="governance-empty">No learning proposals loaded. Load existing proposals or register a candidate for offline evaluation review.</p>}
