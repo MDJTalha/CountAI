@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, createPublicKey, randomBytes, randomUUID, timingSafeEqual, verify as verifySignature } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { isResourceId } from './contracts.mjs';
@@ -22,6 +22,29 @@ function containsSensitiveField(value) {
   return Object.entries(value).some(([key, item]) =>
     SENSITIVE_KEY.test(key) || containsSensitiveField(item)
   );
+}
+
+function normalizeRsaPublicKey(publicKeyJwk) {
+  if (!publicKeyJwk || typeof publicKeyJwk !== 'object' || Array.isArray(publicKeyJwk)) {
+    throw invalid('invalid_public_key');
+  }
+  let serialized;
+  try { serialized = JSON.stringify(publicKeyJwk); }
+  catch { throw invalid('invalid_public_key'); }
+  const privateParameters = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth'];
+  if (Buffer.byteLength(serialized, 'utf8') > 4096 || publicKeyJwk.kty !== 'RSA' ||
+      typeof publicKeyJwk.n !== 'string' || typeof publicKeyJwk.e !== 'string' ||
+      privateParameters.some(parameter => publicKeyJwk[parameter] !== undefined) ||
+      Buffer.from(publicKeyJwk.n, 'base64url').length < 256) {
+    throw invalid('invalid_public_key');
+  }
+  try { createPublicKey({ key: publicKeyJwk, format: 'jwk' }); }
+  catch { throw invalid('invalid_public_key'); }
+  const normalized = { kty: 'RSA', n: publicKeyJwk.n, e: publicKeyJwk.e };
+  const keyThumbprint = createHash('sha256')
+    .update(JSON.stringify({ e: normalized.e, kty: normalized.kty, n: normalized.n }))
+    .digest('base64url');
+  return { publicKeyJwk: normalized, keyThumbprint };
 }
 
 function validateMetadata(metadata, errors) {
@@ -141,6 +164,22 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
             ON spais_audit_events (organization_id, sequence DESC);
           CREATE INDEX IF NOT EXISTS idx_spais_audit_org_site_sequence
             ON spais_audit_events (organization_id, site_id, sequence DESC);
+          CREATE TABLE IF NOT EXISTS spais_connector_enrollments (
+            enrollment_id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            site_id TEXT NOT NULL,
+            connector_id TEXT NOT NULL,
+            challenge_hash TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'expired', 'revoked')),
+            expires_at TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            public_key_jwk TEXT,
+            key_thumbprint TEXT
+          );
+          CREATE INDEX IF NOT EXISTS idx_spais_enrollment_connector
+            ON spais_connector_enrollments (organization_id, site_id, connector_id, status);
         `);
         return database;
       })().catch(error => {
@@ -331,6 +370,164 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
         occurredAt: row.occurred_at,
         details: JSON.parse(row.details_json)
       }));
+    },
+    async createConnectorEnrollmentChallenge({ organizationId, siteId, connectorId, actorId, publicKeyJwk, now = new Date(), ttlSeconds = 600 }) {
+      if (!isResourceId(organizationId) || !isResourceId(siteId) ||
+          !isResourceId(connectorId) || !isResourceId(actorId)) throw invalid('invalid_trusted_scope');
+      const normalizedKey = normalizeRsaPublicKey(publicKeyJwk);
+      const database = await getDatabase();
+      const enrollmentId = randomUUID();
+      const challenge = randomBytes(32).toString('base64url');
+      const challengeHash = createHash('sha256').update(challenge).digest('hex');
+      const createdAt = now.toISOString();
+      const expiresAt = new Date(now.getTime() + Math.max(60, Math.min(900, ttlSeconds)) * 1000).toISOString();
+      database.exec('BEGIN IMMEDIATE;');
+      try {
+        const connector = database.prepare(`
+          SELECT * FROM spais_resources
+          WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
+        `).get(organizationId, connectorId, siteId);
+        if (!connector || connector.status !== 'pending') throw invalid('connector_not_enrollable');
+        const superseded = database.prepare(`
+          UPDATE spais_connector_enrollments SET status = 'revoked'
+          WHERE organization_id = ? AND site_id = ? AND connector_id = ? AND status = 'pending'
+        `).run(organizationId, siteId, connectorId);
+        if (superseded.changes > 0) {
+          writeAudit(database, {
+            organizationId, siteId, actorId, action: 'connector.enrollment_challenge_superseded',
+            resourceType: 'connector', resourceId: connectorId, occurredAt: createdAt,
+            details: { supersededCount: superseded.changes }
+          });
+        }
+        database.prepare(`
+          INSERT INTO spais_connector_enrollments
+            (enrollment_id, organization_id, site_id, connector_id, challenge_hash, status, expires_at, created_by, created_at, public_key_jwk, key_thumbprint)
+          VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+        `).run(
+          enrollmentId, organizationId, siteId, connectorId, challengeHash, expiresAt, actorId, createdAt,
+          JSON.stringify(normalizedKey.publicKeyJwk), normalizedKey.keyThumbprint
+        );
+        writeAudit(database, {
+          organizationId, siteId, actorId, action: 'connector.enrollment_challenge_created',
+          resourceType: 'connector', resourceId: connectorId, occurredAt: createdAt,
+          details: { enrollmentId, expiresAt, keyThumbprint: normalizedKey.keyThumbprint }
+        });
+        database.exec('COMMIT;');
+      } catch (error) {
+        try { database.exec('ROLLBACK;'); } catch {}
+        throw error;
+      }
+      // The raw challenge is returned once; its hash and the expected public key are persisted.
+      return { enrollmentId, challenge, connectorId, siteId, expiresAt, keyThumbprint: normalizedKey.keyThumbprint };
+    },
+    async completeConnectorEnrollment({ enrollmentId, challenge, signature, now = new Date() }) {
+      if (!isResourceId(enrollmentId) || typeof challenge !== 'string' ||
+          !/^[A-Za-z0-9_-]{40,64}$/.test(challenge) ||
+          typeof signature !== 'string' || signature.length > 2048) {
+        throw invalid('invalid_enrollment_proof');
+      }
+      const database = await getDatabase();
+      let expired = false;
+      let result;
+      database.exec('BEGIN IMMEDIATE;');
+      try {
+        const enrollment = database.prepare(`
+          SELECT * FROM spais_connector_enrollments WHERE enrollment_id = ?
+        `).get(enrollmentId);
+        if (!enrollment) throw invalid('enrollment_not_found');
+        if (enrollment.status !== 'pending') throw invalid('enrollment_not_pending');
+        if (Date.parse(enrollment.expires_at) <= now.getTime()) {
+          database.prepare(`
+            UPDATE spais_connector_enrollments SET status = 'expired' WHERE enrollment_id = ?
+          `).run(enrollmentId);
+          writeAudit(database, {
+            organizationId: enrollment.organization_id, siteId: enrollment.site_id,
+            actorId: enrollment.created_by, action: 'connector.enrollment_expired',
+            resourceType: 'connector', resourceId: enrollment.connector_id,
+            occurredAt: now.toISOString(), details: { enrollmentId }
+          });
+          database.exec('COMMIT;');
+          expired = true;
+        } else {
+          const suppliedHash = createHash('sha256').update(challenge).digest();
+          const storedHash = Buffer.from(enrollment.challenge_hash, 'hex');
+          if (storedHash.length !== suppliedHash.length || !timingSafeEqual(storedHash, suppliedHash)) {
+            throw invalid('invalid_enrollment_proof');
+          }
+          let publicKey;
+          try {
+            publicKey = createPublicKey({ key: JSON.parse(enrollment.public_key_jwk), format: 'jwk' });
+          } catch {
+            throw invalid('invalid_public_key');
+          }
+          const validSignature = verifySignature(
+            'RSA-SHA256',
+            Buffer.from(enrollmentId + '.' + challenge),
+            publicKey,
+            Buffer.from(signature, 'base64url')
+          );
+          if (!validSignature) throw invalid('invalid_enrollment_proof');
+
+          const connector = database.prepare(`
+            SELECT * FROM spais_resources
+            WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
+          `).get(enrollment.organization_id, enrollment.connector_id, enrollment.site_id);
+          if (!connector || connector.status !== 'pending') throw invalid('connector_not_enrollable');
+
+          const keyThumbprint = enrollment.key_thumbprint;
+          const completedAt = now.toISOString();
+          database.prepare(`
+            UPDATE spais_connector_enrollments SET status = 'completed', completed_at = ?
+            WHERE enrollment_id = ?
+          `).run(completedAt, enrollmentId);
+          database.prepare(`
+            UPDATE spais_resources SET status = 'enrolled', updated_at = ?
+            WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
+          `).run(completedAt, enrollment.organization_id, enrollment.connector_id, enrollment.site_id);
+          const updatedRow = database.prepare(`
+            SELECT * FROM spais_resources
+            WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ?
+          `).get(enrollment.organization_id, enrollment.connector_id);
+          const resource = toResource(updatedRow);
+          writeAudit(database, {
+            organizationId: enrollment.organization_id, siteId: enrollment.site_id,
+            actorId: enrollment.created_by, action: 'connector.enrollment_completed',
+            resourceType: 'connector', resourceId: enrollment.connector_id,
+            occurredAt: completedAt, details: { enrollmentId, keyThumbprint, after: resource }
+          });
+          database.exec('COMMIT;');
+          result = { enrollmentId, connector: resource, keyThumbprint, enrolledAt: completedAt };
+        }
+      } catch (error) {
+        try { database.exec('ROLLBACK;'); } catch {}
+        throw error;
+      }
+      if (expired) throw invalid('enrollment_expired');
+      return result;
+    },
+    async getConnectorIdentity({ organizationId, siteId, connectorId } = {}) {
+      if (!isResourceId(organizationId) || !isResourceId(siteId) || !isResourceId(connectorId)) {
+        throw invalid('invalid_resource_query');
+      }
+      const database = await getDatabase();
+      const row = database.prepare(`
+        SELECT e.public_key_jwk, e.key_thumbprint, e.completed_at
+        FROM spais_connector_enrollments e
+        JOIN spais_resources r
+          ON r.organization_id = e.organization_id
+         AND r.resource_type = 'connector'
+         AND r.resource_id = e.connector_id
+         AND r.site_id = e.site_id
+        WHERE e.organization_id = ? AND e.site_id = ? AND e.connector_id = ?
+          AND e.status = 'completed' AND r.status = 'enrolled'
+        ORDER BY e.completed_at DESC LIMIT 1
+      `).get(organizationId, siteId, connectorId);
+      if (!row) return null;
+      return {
+        publicKeyJwk: JSON.parse(row.public_key_jwk),
+        keyThumbprint: row.key_thumbprint,
+        enrolledAt: row.completed_at
+      };
     },
     async close() {
       if (!databasePromise) return;
