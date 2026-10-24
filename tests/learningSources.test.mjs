@@ -95,6 +95,19 @@ test('learning source deletion removes tenant-scoped records and retention expir
     assert.equal((await store.delete({
       organizationId: 'org-2', siteId: 'site-1', sourceId: source.id, actorId: 'operator-2'
     })).deleted, false);
+    const concurrentSource = await store.create({
+      organizationId: 'org-1', principal: { subjectId: 'operator-1' },
+      input: {
+        siteId: 'site-1', sourceType: 'observation', title: 'Concurrent deletion test',
+        contentText: 'Only one concurrent delete should succeed.', consentConfirmed: true
+      }
+    });
+    const concurrentResults = await Promise.all([
+      store.delete({ organizationId: 'org-1', siteId: 'site-1', sourceId: concurrentSource.id, actorId: 'operator-1' }),
+      store.delete({ organizationId: 'org-1', siteId: 'site-1', sourceId: concurrentSource.id, actorId: 'operator-2' })
+    ]);
+    assert.equal(concurrentResults.filter(result => result.deleted).length, 1);
+    assert.equal(concurrentResults.filter(result => !result.deleted).length, 1);
     assert.equal((await store.list({ organizationId: 'org-1', siteId: 'site-1' })).length, 1);
     assert.equal((await store.purgeExpired({ retentionDays: 0 })).disabled, true);
     const expired = await store.purgeExpired({
