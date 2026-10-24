@@ -919,4 +919,9 @@ const server = createServer(async (req, res) => {
   res.writeHead(200, {'content-type':mime[extname(file)] || 'application/octet-stream','x-content-type-options':'nosniff','referrer-policy':'strict-origin-when-cross-origin'});
   createReadStream(file).pipe(res);
 });
-server.listen(port, '0.0.0.0', () => console.log(`SPAIS API listening on ${port}`));
+// Bound connection/header handling to reduce slow-client resource exhaustion.
+server.headersTimeout = Number(process.env.COUNTAI_HEADERS_TIMEOUT_MS || 15_000);
+server.requestTimeout = Number(process.env.COUNTAI_REQUEST_TIMEOUT_MS || 120_000);
+server.keepAliveTimeout = Number(process.env.COUNTAI_KEEPALIVE_TIMEOUT_MS || 5_000);
+server.maxHeadersCount = 100;
+server.listen(port, '0.0.0.0', () => console.log(`CountAI API listening on ${port}`));
