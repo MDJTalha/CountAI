@@ -77,6 +77,27 @@ test('recognition endpoint clearly reports unconfigured cloud processing', async
   assert.match(body.error, /No image was analyzed/i);
 });
 
+test('versioned SPAIS contract manifest is explicit and cache-disabled', async () => {
+  const response = await fetch(`${baseUrl}/api/v1/spais/contracts`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  const body = await response.json();
+  assert.equal(body.apiVersion, 'v1');
+  assert.equal(body.contractVersion, 1);
+  assert.equal(body.authenticationConfigured, false);
+  assert.equal(body.tenantResourceApiEnabled, false);
+  assert.ok(body.resourceTypes.includes('connector'));
+});
+
+test('tenant-scoped APIs fail closed until trusted authentication is configured', async () => {
+  const response = await fetch(`${baseUrl}/api/v1/organizations/org-1/cameras`);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    error: 'tenant_api_not_enabled',
+    message: 'Tenant-scoped SPAIS APIs are disabled until trusted authentication, authorization and persistence are configured.'
+  });
+});
+
 test('unknown API routes return JSON 404 responses', async () => {
   const response = await fetch(`${baseUrl}/api/does-not-exist`);
   assert.equal(response.status, 404);
