@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Beaker, RefreshCw, ShieldAlert, ShieldCheck, Upload, FileText, Video, BookOpen } from 'lucide-react';
+import { Beaker, RefreshCw, ShieldAlert, ShieldCheck, Upload, Video, BookOpen } from 'lucide-react';
 
 type CandidateStatus = 'proposed' | 'under_review' | 'evaluation_pending' | 'rejected';
 type Candidate = {
