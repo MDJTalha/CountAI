@@ -88,6 +88,44 @@ const server = createServer(async (req, res) => {
     }));
   }
 
+  // Operators can read recent telemetry only for an authorized organization/site/connector.
+  const connectorTelemetryReadRoute = url.pathname.match(/^\\/api\\/v1\\/organizations\\/([^/]+)\\/connectors\\/([^/]+)\\/telemetry$/);
+  if (connectorTelemetryReadRoute) {
+    if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
+    let organizationId;
+    let connectorId;
+    try {
+      organizationId = decodeURIComponent(connectorTelemetryReadRoute[1]);
+      connectorId = decodeURIComponent(connectorTelemetryReadRoute[2]);
+    } catch { return json(res, 400, { error: 'invalid_resource_id' }); }
+    const siteId = url.searchParams.get('siteId') || undefined;
+    if (!isResourceId(organizationId) || !isResourceId(connectorId)) return json(res, 400, { error: 'invalid_resource_id' });
+    if (!isResourceId(siteId)) return json(res, 400, { error: 'site_id_required' });
+    if (!spaisAuthConfigured || !resourceStore.configured || !connectorTelemetryReceiver.configured) {
+      return json(res, 503, { error: 'connector_telemetry_not_enabled' });
+    }
+    const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
+    if (!authentication.authenticated) {
+      return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
+    }
+    const authorization = authorizeSpaisAction({
+      principal: authentication.principal, organizationId, siteId, action: 'connector:read'
+    });
+    if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
+    try {
+      const connector = await resourceStore.get({ organizationId, resourceType: 'connector', resourceId: connectorId, siteId });
+      if (!connector || connector.status !== 'enrolled') return json(res, 404, { error: 'connector_not_found' });
+      const requestedLimit = Number(url.searchParams.get('limit') || 100);
+      const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 100;
+      const telemetry = await connectorTelemetryReceiver.list({ organizationId, siteId, connectorId, limit });
+      return json(res, 200, { organizationId, siteId, connectorId, telemetry, count: telemetry.length, limit });
+    } catch (error) {
+      if (error.code === 'invalid_telemetry_query') return json(res, 400, { error: error.code });
+      console.error('SPAIS connector telemetry read failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'connector_telemetry_read_failed' });
+    }
+  }
+
   // Connector telemetry is authenticated by the enrolled connector's RSA key.
   // These signed reports are not treated as independently verified recorder evidence.
   const connectorTelemetryRoute = url.pathname.match(/^\/api\/v1\/connectors\/([^/]+)\/telemetry$/);
