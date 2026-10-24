@@ -7,6 +7,7 @@ type Resource = {
   status: string; resourceType: string; metadata?: Record<string, unknown>;
   createdAt?: string; updatedAt?: string;
 };
+type EnrollmentChallenge = { enrollmentId: string; challenge: string; connectorId: string; siteId: string; expiresAt: string; keyThumbprint: string };
 type OperationalEvent = {
   id: string; organizationId: string; siteId: string; recordedAt: string;
   eventType: string; actorId?: string; payload?: Record<string, unknown>;
@@ -45,6 +46,9 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
   const [resourceName, setResourceName] = useState('');
   const [resourceId, setResourceId] = useState('');
   const [resourceType, setResourceType] = useState<'site' | 'camera' | 'connector'>('site');
+  const [enrollmentConnectorId, setEnrollmentConnectorId] = useState('');
+  const [publicKeyText, setPublicKeyText] = useState('');
+  const [enrollmentChallenge, setEnrollmentChallenge] = useState<EnrollmentChallenge | null>(null);
 
   if (!visible) return null;
 
@@ -139,6 +143,29 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not create inventory record.');
     } finally { setBusy(false); }
   }
+  async function createEnrollmentChallenge(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!validateConnection(true)) return;
+    if (!enrollmentConnectorId) { setIsError(true); setMessage('Select a connector record first.'); return; }
+    let publicKeyJwk: unknown;
+    try { publicKeyJwk = JSON.parse(publicKeyText); }
+    catch { setIsError(true); setMessage('Paste a valid public RSA JWK JSON object. Do not paste a private key.'); return; }
+    if (!publicKeyJwk || typeof publicKeyJwk !== 'object' || Array.isArray(publicKeyJwk)) {
+      setIsError(true); setMessage('The public key must be a JSON object.'); return;
+    }
+    setBusy(true); setIsError(false); setEnrollmentChallenge(null);
+    try {
+      const url = `/api/v1/organizations/${encodeURIComponent(organizationId.trim())}/connectors/${encodeURIComponent(enrollmentConnectorId)}/enrollment-challenges?siteId=${encodeURIComponent(siteId.trim())}`;
+      const body = await readResponse<{ enrollment: EnrollmentChallenge }>(await fetch(url, {
+        method: 'POST', headers: headers(true), body: JSON.stringify({ publicKeyJwk }), cache: 'no-store'
+      }));
+      setEnrollmentChallenge(body.enrollment);
+      setMessage('One-time enrollment challenge created. Complete proof-of-possession on the customer-controlled connector before it expires.');
+    } catch (error) {
+      setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not create enrollment challenge.');
+    } finally { setBusy(false); }
+  }
+
   const activeSite = sites.find(site => site.id === siteId);
   const currentResources = section === 'sites' ? sites : section === 'cameras' ? cameras : connectors;
   const currentTitle = section === 'sites' ? 'Sites' : section === 'cameras' ? 'Camera inventory' : section === 'connectors' ? 'Edge connectors' : 'Operational events';
@@ -180,6 +207,15 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
         <div className="ops-form-actions"><button type="button" className="outline-button" onClick={() => setCreateOpen(false)}>Cancel</button><button className="primary-button" disabled={busy || (resourceType !== 'site' && !siteId)}><Plus size={15}/> Create metadata</button></div>
         <small>Only metadata is created. Camera connectivity and connector enrollment are separate workflows.</small>
       </form>}
+      {section === 'connectors' && <section className="ops-enrollment-panel" aria-labelledby="connector-enrollment-title">
+        <div className="ops-enrollment-heading"><div><h3 id="connector-enrollment-title">Enroll an edge connector</h3><p>Create a short-lived challenge using the connector's public key. The private key must remain on the customer-controlled host.</p></div><span className="capability-state is-pending">10-minute challenge</span></div>
+        <form className="ops-enrollment-form" onSubmit={event => void createEnrollmentChallenge(event)}>
+          <label>Connector record<select required value={enrollmentConnectorId} onChange={event => { setEnrollmentConnectorId(event.target.value); setEnrollmentChallenge(null); }}><option value="">Choose a connector</option>{connectors.map(connector => <option key={connector.id} value={connector.id}>{connector.name} · {connector.id} · {connector.status}</option>)}</select></label>
+          <label>Public RSA JWK JSON<textarea required rows={4} value={publicKeyText} onChange={event => setPublicKeyText(event.target.value)} placeholder='{"kty":"RSA","n":"…","e":"AQAB"}' spellCheck={false}/></label>
+          <div className="ops-form-actions"><button className="primary-button" disabled={busy || !siteId || !connectors.length}><ShieldCheck size={15}/>{busy ? 'Creating…' : 'Create one-time challenge'}</button></div>
+        </form>
+        {enrollmentChallenge && <div className="ops-challenge-result"><strong>Challenge created · expires {safeDate(enrollmentChallenge.expiresAt)}</strong><small>Enrollment ID</small><code>{enrollmentChallenge.enrollmentId}</code><small>One-time challenge — copy it to the approved connector enrollment procedure</small><textarea readOnly rows={3} value={enrollmentChallenge.challenge} aria-label="One-time enrollment challenge"/><small>Public-key thumbprint: <code>{enrollmentChallenge.keyThumbprint}</code></small><p>Keep the challenge available only to the authorized enrollment operator. The server stores its hash and will reject expired or reused challenges.</p></div>}
+      </section>}
       {section === 'events' ? events.length ? <div className="ops-event-list">{events.map(item => <article className="ops-event-row" key={item.id}><span className="ops-event-icon"><Activity size={16}/></span><div><strong>{item.eventType.replaceAll('_',' ')}</strong><small>{safeDate(item.recordedAt)} · {item.actorId || 'System actor'}</small><code>{item.id}</code></div><span className="ops-event-site">{item.siteId}</span></article>)}</div> : <div className="dashboard-empty"><CircleAlert size={23}/><strong>No operational events loaded</strong><p>Connect with an authorized token and select a site to read the scoped event timeline.</p></div> :
         currentResources.length ? <div className="ops-resource-list">{currentResources.map(item => <article className="ops-resource-row" key={item.id}><span className="ops-resource-icon">{section === 'sites' ? <Database size={17}/> : section === 'cameras' ? <Camera size={17}/> : <WifiOff size={17}/>}</span><div className="ops-resource-main"><strong>{item.name}</strong><small>{item.id}{item.siteId ? ` · site ${item.siteId}` : ''}</small><small>Created {safeDate(item.createdAt)}</small></div><span className={`capability-state ${item.status === 'active' || item.status === 'enrolled' ? 'is-available' : 'is-pending'}`}>{item.status.replaceAll('_',' ')}</span></article>)}</div> :
         <div className="dashboard-empty"><Database size={23}/><strong>No records to display</strong><p>Connect with a trusted token, then refresh to load authorized inventory. API configuration and authorization are required.</p></div>}
