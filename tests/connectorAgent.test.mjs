@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, verify } from 'node:crypto';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -12,6 +12,7 @@ import {
   runConnectorOnce
 } from '../connector/agent.mjs';
 import { canonicalizeConnectorTelemetry } from '../server/spais/connectorTelemetry.mjs';
+import { readTelemetryQueue, writeTelemetryQueue } from '../connector/offlineQueue.mjs';
 
 test('edge identity is generated locally with a private key file and public JWK export', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'spais-agent-key-'));
@@ -163,6 +164,48 @@ test('offline queue durably retries with a stable delivery ID and a fresh signed
       'RSA-SHA256', canonicalizeConnectorTelemetry(retryMessages[0]), pair.publicKey,
       Buffer.from(retryMessages[0].signature, 'base64url')
     ));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('offline queue rejects secret-bearing metadata, duplicate delivery IDs, corrupt files, and symlinks', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'spais-queue-validation-'));
+  const queuePath = join(dir, 'queue.json');
+  const targetPath = join(dir, 'target.json');
+  const symlinkPath = join(dir, 'queue-link.json');
+  const entry = {
+    deliveryId: 'delivery-validation-0001',
+    eventType: 'connector.heartbeat',
+    payload: { status: 'healthy', version: 'test-agent' },
+    queuedAt: '2026-10-24T10:00:00.000Z'
+  };
+  try {
+    await assert.rejects(
+      () => writeTelemetryQueue(queuePath, [{ ...entry, payload: { status: 'healthy', accessToken: 'must-not-be-stored' } }]),
+      error => error.code === 'invalid_connector_queue_entry'
+    );
+    await assert.rejects(
+      () => writeTelemetryQueue(queuePath, [entry, entry]),
+      error => error.code === 'connector_queue_duplicate_delivery_id'
+    );
+
+    await writeTelemetryQueue(queuePath, [entry]);
+    assert.equal((await readTelemetryQueue(queuePath))[0].deliveryId, entry.deliveryId);
+
+    await writeTelemetryQueue(targetPath, [entry]);
+    await symlink(targetPath, symlinkPath);
+    await assert.rejects(
+      () => readTelemetryQueue(symlinkPath),
+      error => error.code === 'connector_queue_not_regular_file'
+    );
+
+    await writeFile(queuePath, '{invalid-json', 'utf8');
+    await assert.rejects(
+      () => readTelemetryQueue(queuePath),
+      error => error.code === 'connector_queue_corrupt'
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
