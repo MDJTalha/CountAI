@@ -27,8 +27,7 @@ export function validateOperationalEvent(input) {
   if (typeof input.sessionId !== 'string' || !ID_PATTERN.test(input.sessionId)) {
     errors.push('sessionId must be a valid resource identifier');
   }
-  if (input.siteId !== undefined && input.siteId !== null &&
-      (typeof input.siteId !== 'string' || !ID_PATTERN.test(input.siteId))) {
+  if (typeof input.siteId !== 'string' || !ID_PATTERN.test(input.siteId)) {
     errors.push('siteId must be a valid resource identifier');
   }
   if (input.occurredAt !== undefined &&
