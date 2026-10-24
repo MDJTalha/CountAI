@@ -1,8 +1,8 @@
-import { Activity, ArrowRight, BarChart3, Camera, ImagePlus, Layers3, ShieldCheck, Sparkles } from 'lucide-react';
+import { Activity, ArrowRight, BarChart3, Camera, ImagePlus, Layers3, ShieldCheck, Sparkles, Server } from 'lucide-react';
 import type { CountSession } from './types/counting';
 import { SpaisSystemStatus } from './SpaisSystemStatus';
 
-type Workspace = 'dashboard' | 'live' | 'photo' | 'history' | 'analytics';
+type Workspace = 'dashboard' | 'live' | 'photo' | 'history' | 'analytics' | 'operations';
 type Props = {
   sessions: CountSession[];
   onNavigate: (workspace: Workspace) => void;
@@ -62,6 +62,12 @@ export function DashboardHome({ sessions, onNavigate, onOpenSession }: Props) {
         <h2>Analytics</h2>
         <p>Review saved photo activity, category totals, and correction history over time.</p>
         <button className="outline-button" onClick={() => onNavigate('analytics')}>View analytics <ArrowRight size={15}/></button>
+      </article>
+      <article className="dashboard-card dashboard-action">
+        <div className="dashboard-action-icon"><Server size={20}/></div>
+        <h2>Sites &amp; cameras</h2>
+        <p>Inspect authorized site inventory, camera metadata, connector records and operational events.</p>
+        <button className="outline-button" onClick={() => onNavigate('operations')}>Open operations <ArrowRight size={15}/></button>
       </article>
 
       <SpaisSystemStatus />
