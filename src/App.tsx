@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, Check, ChevronRight, CircleHelp, Download, ImagePlus, LoaderCircle, Plus, ScanSearch, ShieldCheck, Smartphone, Trash2, Upload, Wifi, X } from 'lucide-react';
 
 import { LiveCounter } from './LiveCounter';
+import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { totalsByCategory } from './engine/counting';
 import { listSessions, saveSession, deleteSession } from './storage/sessions';
 import type { CountSession, Detection } from './types/counting';
@@ -23,7 +24,7 @@ function getDetector() {
 }
 const MAX_FILE = 12 * 1024 * 1024;
 export function App() {
-  const [activeWorkspace, setActiveWorkspace] = useState<'live' | 'photo' | 'history'>('live');
+  const [activeWorkspace, setActiveWorkspace] = useState<'live' | 'photo' | 'history' | 'analytics'>('live');
   const fileRef = useRef<HTMLInputElement>(null), cameraRef = useRef<HTMLVideoElement>(null), canvasRef = useRef<HTMLCanvasElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null), [imageUrl, setImageUrl] = useState(''), [filename, setFilename] = useState('');
   const [detections, setDetections] = useState<Detection[]>([]), [target, setTarget] = useState(''), [busy, setBusy] = useState(false), [engine, setEngine] = useState('Not loaded');
@@ -110,6 +111,7 @@ export function App() {
       <button className={activeWorkspace === 'live' ? 'primary-button' : 'outline-button'} aria-pressed={activeWorkspace === 'live'} onClick={() => setActiveWorkspace('live')}>Live Counter</button>
       <button className={activeWorkspace === 'photo' ? 'primary-button' : 'outline-button'} aria-pressed={activeWorkspace === 'photo'} onClick={() => setActiveWorkspace('photo')}>Photo Counter & Review</button>
       <button className={activeWorkspace === 'history' ? 'primary-button' : 'outline-button'} aria-pressed={activeWorkspace === 'history'} onClick={() => setActiveWorkspace('history')}>History</button>
+      <button className={activeWorkspace === 'analytics' ? 'primary-button' : 'outline-button'} aria-pressed={activeWorkspace === 'analytics'} onClick={() => setActiveWorkspace('analytics')}>Analytics</button>
     </nav>
     <section className="hero" style={{ display: activeWorkspace === 'live' ? undefined : 'none' }} id="top"><div className="eyebrow">VISUAL INTELLIGENCE Â· BUILT FOR THE REAL WORLD</div><h1>Count what<br/><em>you can see.</em></h1><p>Turn a photo into a reviewable count. AI suggests detections; you stay in control of the final numbers.</p><div className="feature-pills"><span><Smartphone size={14}/> Installable PWA</span><span><ShieldCheck size={14}/> Private by default</span><span><Wifi size={14}/> Local AI</span></div></section>
 <div style={{ display: activeWorkspace === 'live' ? 'block' : 'none' }}><LiveCounter /></div>
@@ -135,6 +137,7 @@ export function App() {
       <p className="accuracy-note"><CircleHelp size={16}/> Detection counts can be wrong when items overlap, are small, obscured, or outside the model's supported classes. Review before relying on totals.</p>
     </section>
     <section className="history-section" style={{ display: activeWorkspace === 'history' ? undefined : 'none' }}><div className="section-heading"><div><span className="step">03 / ON THIS DEVICE</span><h2>Recent sessions</h2></div><span className="local-badge">IndexedDB</span></div>{sessions.length ? sessions.slice(0,8).map(s=><div className="session-row" key={s.id}><button className="session-open" onClick={()=>openSession(s)}><span><b>{s.title}</b><small>{new Date(s.createdAt).toLocaleString()} Â· {s.target}</small></span><strong>{s.detections.length}<ChevronRight size={16}/></strong></button><button className="icon-button danger" aria-label="Delete session" onClick={()=>eraseSession(s.id)}><Trash2 size={15}/></button></div>) : <p className="empty-copy">Your saved sessions will appear here after you analyze or correct a count.</p>}</section>
+    <div style={{ display: activeWorkspace === 'analytics' ? undefined : 'none' }}><AnalyticsDashboard sessions={sessions} onOpenSession={openSession} /></div>
     <footer><div className="footer-brand">CountAI <span>BY AIVON</span></div><p>AI-assisted counting. Human-verified results.</p><small>Photos are processed locally by default. This build does not identify people or perform biometric matching.</small></footer>
     <div id="edit-modal" className="modal hidden" role="dialog" aria-modal="true" aria-labelledby="edit-heading"><div className="modal-card"><div className="modal-head"><h2 id="edit-heading">Correct detection</h2><button className="icon-button" onClick={()=>document.getElementById('edit-modal')?.classList.add('hidden')} aria-label="Close"><X size={18}/></button></div><label className="field-label" htmlFor="edit-category">CATEGORY</label><input id="edit-category" value={editCategory} onChange={e=>setEditCategory(e.target.value)} maxLength={100}/><label className="field-label" htmlFor="edit-confidence">CONFIDENCE (0â€“1, OPTIONAL)</label><input id="edit-confidence" type="number" min="0" max="1" step="0.01" value={editConfidence} onChange={e=>setEditConfidence(e.target.value)}/><div className="modal-actions"><button className="outline-button" onClick={()=>document.getElementById('edit-modal')?.classList.add('hidden')}>Cancel</button><button className="primary-button" onClick={saveEdit}><Check size={16}/> Save correction</button></div></div></div>
   </main>;
