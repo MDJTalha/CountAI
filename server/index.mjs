@@ -798,10 +798,13 @@ const server = createServer(async (req, res) => {
     if (!authentication.authenticated) {
       return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
     }
+    // Audit entries can contain site-level operational details. Require an explicit
+    // site filter because the current token contract has no separate org-wide audit scope.
+    if (!siteId) return json(res, 400, { error: 'site_id_required' });
     const authorization = authorizeSpaisAction({
       principal: authentication.principal,
       organizationId,
-      ...(siteId ? { siteId } : {}),
+      siteId,
       action: 'audit:read'
     });
     if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
