@@ -44,6 +44,12 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - The panel has explicit loading/error states and manual refresh; it does not request camera feeds, expose tenant data, or equate API readiness with camera/NVR health.
 - Recorder status remains explicitly unverified until customer-controlled recorder evidence is independently checked.
 
+## Customer-controlled edge connector pilot
+- Added `connector/agent.mjs`: a no-inbound-listener Node.js pilot agent that generates a local RSA identity, completes one-time proof-of-possession enrollment, and sends signed metadata telemetry to the configured SPAIS API.
+- The agent can poll one explicitly configured read-only recorder-status endpoint and forward bounded camera-health and recording-coverage reports; it performs no discovery/scanning and sends no frames or images.
+- The agent accepts only configured endpoint URLs, rejects URL-embedded credentials and secret-like query parameters, supports explicit HTTP opt-in for customer-approved local recorder endpoints, and never logs credentials or payloads.
+- Recorder coverage reports remain `reported_not_independently_verified`. This generic HTTP adapter is not a vendor-specific ONVIF/NVR integration and is not pilot-accepted or production-approved until customer lab validation.
+
 ## Not yet implemented or verified
 - Production identity-provider integration, key rotation and operational secret management.
 - Deployment-specific OIDC identity-provider configuration, identity lifecycle operations, emergency key revocation procedures and operational secret management.
@@ -52,7 +58,7 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Authorized, site-scoped connector telemetry reads require trusted bearer identity plus `connector:read`; returned recorder coverage remains labelled as reported rather than independently verified.
 - Connector public-key rotation is atomic: the prior enrolled key is revoked in the same transaction that activates the replacement. Explicit connector revocation invalidates active/pending enrollments and is audited; telemetry fails closed afterward.
 - Production-grade rate limiting/abuse controls, operational key management, and deployment monitoring.
-- Recorder-side recording coverage evidence.
+- Vendor-specific ONVIF/NVR adapters, independently verified recorder-side recording coverage evidence, durable offline store-and-forward, and customer lab acceptance.
 - Incident lifecycle and SOP/policy governance.
 - Governed model candidate evaluation, approval and promotion.
 - Real-camera lab or customer pilot acceptance.
