@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, createPublicKey, randomBytes, randomUUID, timingSafeEqual, verify as verifySignature } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { isResourceId } from './contracts.mjs';
@@ -141,6 +141,22 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
             ON spais_audit_events (organization_id, sequence DESC);
           CREATE INDEX IF NOT EXISTS idx_spais_audit_org_site_sequence
             ON spais_audit_events (organization_id, site_id, sequence DESC);
+          CREATE TABLE IF NOT EXISTS spais_connector_enrollments (
+            enrollment_id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            site_id TEXT NOT NULL,
+            connector_id TEXT NOT NULL,
+            challenge_hash TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'expired', 'revoked')),
+            expires_at TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            public_key_jwk TEXT,
+            key_thumbprint TEXT
+          );
+          CREATE INDEX IF NOT EXISTS idx_spais_enrollment_connector
+            ON spais_connector_enrollments (organization_id, site_id, connector_id, status);
         `);
         return database;
       })().catch(error => {
