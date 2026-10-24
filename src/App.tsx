@@ -27,7 +27,8 @@ export function App() {
   const fileRef = useRef<HTMLInputElement>(null), cameraRef = useRef<HTMLVideoElement>(null), canvasRef = useRef<HTMLCanvasElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null), [imageUrl, setImageUrl] = useState(''), [filename, setFilename] = useState('');
   const [detections, setDetections] = useState<Detection[]>([]), [target, setTarget] = useState(''), [busy, setBusy] = useState(false), [engine, setEngine] = useState('Not loaded');
-  const [message, setMessage] = useState('Choose a photo to begin. Your photo stays in this browser for local detection.'), [error, setError] = useState(false);\n  const [enhancedPhotoScan, setEnhancedPhotoScan] = useState(true);
+  const [message, setMessage] = useState('Choose a photo to begin. Your photo stays in this browser for local detection.'), [error, setError] = useState(false);
+  const [enhancedPhotoScan, setEnhancedPhotoScan] = useState(true);
   const [sessions, setSessions] = useState<CountSession[]>([]), [cameraOpen, setCameraOpen] = useState(false), [stream, setStream] = useState<MediaStream | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null), [editCategory, setEditCategory] = useState('object'), [editConfidence, setEditConfidence] = useState('');
   const totals = totalsByCategory(detections);
