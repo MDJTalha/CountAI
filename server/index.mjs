@@ -488,7 +488,7 @@ const server = createServer(async (req, res) => {
   }
 
   // SOP/policy versions are site-scoped, immutable after approval, and independently approved.
-  const sopRoute = url.pathname.match(/^\\/api\\/v1\\/organizations\\/([^/]+)\\/sops(?:\\/([^/]+))?$/);
+  const sopRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/sops(?:\/([^/]+))?$/);
   if (sopRoute) {
     const sopIdSegment = sopRoute[2];
     const allowedMethods = sopIdSegment ? ['GET', 'PATCH'] : ['GET', 'POST'];
