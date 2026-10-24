@@ -209,11 +209,11 @@ export function LiveCounter() {
     }
   }
 
-  function persistLiveEvent(type: string, payload: Record<string, unknown>) {
+  function persistLiveEvent(type: string, payload: Record<string, unknown>, actorType: 'system' | 'operator' = 'system') {
     const sessionId = liveSessionIdRef.current;
     if (!sessionId) return;
     try {
-      recordLiveSessionEvent(window.localStorage, sessionId, type, payload);
+      recordLiveSessionEvent(window.localStorage, sessionId, type, payload, actorType);
     } catch {
       // Storage failures must not stop live inference or counting.
     }
@@ -595,6 +595,7 @@ export function LiveCounter() {
   }
 
   function resetCounts() {
+    persistLiveEvent('count_reset', { reason: 'operator_reset' }, 'operator');
     countsRef.current = {};
     directionsRef.current = { 'A-to-B': 0, 'B-to-A': 0 };
     trackerRef.current = createTracker();
