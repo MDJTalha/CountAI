@@ -113,6 +113,24 @@ export async function enqueueTelemetry(path, events, now = new Date()) {
   return combined;
 }
 
+export async function getTelemetryQueueStatus(path, now = new Date()) {
+  const entries = await readTelemetryQueue(path);
+  const nowMs = now instanceof Date ? now.getTime() : Date.parse(now);
+  if (!Number.isFinite(nowMs)) throw fail('invalid_connector_queue_clock');
+  const oldest = entries.reduce((earliest, entry) => {
+    if (!earliest || Date.parse(entry.queuedAt) < Date.parse(earliest.queuedAt)) return entry;
+    return earliest;
+  }, null);
+  return {
+    queuedCount: entries.length,
+    queuedBytes: Buffer.byteLength(JSON.stringify(entries) + '\\n', 'utf8'),
+    oldestQueuedAt: oldest?.queuedAt ?? null,
+    oldestQueuedAgeSeconds: oldest
+      ? Math.max(0, Math.floor((nowMs - Date.parse(oldest.queuedAt)) / 1000))
+      : 0
+  };
+}
+
 export async function acknowledgeTelemetry(path, deliveryId) {
   if (!ID_PATTERN.test(deliveryId || '')) throw fail('invalid_connector_queue_entry');
   const queue = await readTelemetryQueue(path);
