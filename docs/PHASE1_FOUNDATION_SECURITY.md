@@ -24,6 +24,7 @@ All controls have safe development defaults. Review these values against the dep
 | `COUNTAI_HEADERS_TIMEOUT_MS` | `15000` | Header receipt timeout |
 | `COUNTAI_REQUEST_TIMEOUT_MS` | `120000` | Complete request timeout |
 | `COUNTAI_KEEPALIVE_TIMEOUT_MS` | `5000` | Keep-alive timeout |
+| `COUNTAI_LEARNING_SOURCE_RETENTION_DAYS` | `0` | Learning-source expiry days; `0` disables expiry |
 
 The application should run behind a maintained TLS reverse proxy or managed gateway. For a multi-instance or public production deployment, enforce rate limits at a trusted shared gateway/WAF as well: this in-memory limiter is per process, resets on restart and is not a distributed quota service. Do not enable proxy-IP trust until the trusted proxy chain and header sanitization are explicitly configured.
 
