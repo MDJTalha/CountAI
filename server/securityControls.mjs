@@ -55,7 +55,7 @@ export function createApiRateLimiter({
   return {
     check({ key, isWrite = false } = {}) {
       const normalizedKey = typeof key === 'string' && key ? key : 'unknown-client';
-      return consume(normalizedKey, isWrite ? writeLimit : apiLimit);
+      return consume(normalizedKey + (isWrite ? ':write' : ':api'), isWrite ? writeLimit : apiLimit);
     },
     get trackedKeys() { return buckets.size; }
   };
