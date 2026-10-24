@@ -40,15 +40,17 @@ export class CocoSsdDetector implements ModelDetector {
     }
 
     const predictions = await this.model.detect(input, 40, minScore);
+    const scaleX = sourceWidth / inferenceSize.width;
+    const scaleY = sourceHeight / inferenceSize.height;
     return predictions.map(p => ({
       id: `local-${Date.now()}-${this.nextDetectionId++}`,
       category: p.class,
       confidence: p.score,
       bbox: [
-        p.bbox[0] / inferenceSize.scale,
-        p.bbox[1] / inferenceSize.scale,
-        p.bbox[2] / inferenceSize.scale,
-        p.bbox[3] / inferenceSize.scale
+        p.bbox[0] * scaleX,
+        p.bbox[1] * scaleY,
+        p.bbox[2] * scaleX,
+        p.bbox[3] * scaleY
       ],
       source: 'local'
     }));
