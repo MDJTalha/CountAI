@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, writeFile, chmod } from 'node:fs/promises';
+import { mkdir, writeFile, chmod, unlink } from 'node:fs/promises';
 import { dirname, resolve, join } from 'node:path';
 import { isResourceId } from './contracts.mjs';
 
@@ -190,6 +190,55 @@ export function createSqliteLearningSourceStore({
       const database = await db();
       return database.prepare('SELECT * FROM countai_learning_sources WHERE organization_id = ? AND site_id = ? ORDER BY sequence DESC LIMIT ?')
         .all(organizationId, siteId, Math.max(1, Math.min(100, limit))).map(row => map(row, false));
+    },
+    async delete({ organizationId, siteId, sourceId, actorId, action = 'learning_source.deleted' }) {
+      if (!isResourceId(organizationId) || !isResourceId(siteId) || !isResourceId(sourceId) ||
+          typeof actorId !== 'string' || !actorId.trim() || !['learning_source.deleted', 'learning_source.retention_expired'].includes(action)) {
+        throw fail('invalid_learning_source_delete');
+      }
+      const database = await db();
+      const row = database.prepare('SELECT id, media_path FROM countai_learning_sources WHERE organization_id = ? AND site_id = ? AND id = ?')
+        .get(organizationId, siteId, sourceId);
+      if (!row) return { deleted: false, mediaCleanupPending: false };
+      const occurredAt = new Date().toISOString();
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        database.prepare('DELETE FROM countai_learning_sources WHERE organization_id = ? AND site_id = ? AND id = ?')
+          .run(organizationId, siteId, sourceId);
+        database.prepare('INSERT INTO countai_learning_source_audit (source_id,organization_id,site_id,actor_id,action,occurred_at) VALUES (?,?,?,?,?,?)')
+          .run(sourceId, organizationId, siteId, actorId, action, occurredAt);
+        database.exec('COMMIT');
+      } catch (error) {
+        try { database.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      let mediaCleanupPending = false;
+      if (row.media_path) {
+        try { await unlink(row.media_path); }
+        catch (error) { if (error.code !== 'ENOENT') mediaCleanupPending = true; }
+      }
+      return { deleted: true, mediaCleanupPending };
+    },
+    async purgeExpired({ retentionDays = Number(process.env.COUNTAI_LEARNING_SOURCE_RETENTION_DAYS || 0), now = Date.now() } = {}) {
+      if (!Number.isInteger(retentionDays) || retentionDays < 0 || retentionDays > 3650 || !Number.isFinite(now)) {
+        throw fail('invalid_learning_source_retention');
+      }
+      if (retentionDays === 0) return { deleted: 0, mediaCleanupPending: 0, disabled: true };
+      const database = await db();
+      const cutoff = new Date(now - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+      const expired = database.prepare('SELECT id, organization_id, site_id, created_by FROM countai_learning_sources WHERE created_at < ? ORDER BY sequence ASC')
+        .all(cutoff);
+      let deleted = 0;
+      let mediaCleanupPending = 0;
+      for (const row of expired) {
+        const result = await this.delete({
+          organizationId: row.organization_id, siteId: row.site_id, sourceId: row.id,
+          actorId: 'system-retention', action: 'learning_source.retention_expired'
+        });
+        if (result.deleted) deleted += 1;
+        if (result.mediaCleanupPending) mediaCleanupPending += 1;
+      }
+      return { deleted, mediaCleanupPending, disabled: false, retentionDays, cutoff };
     }
   };
 }
