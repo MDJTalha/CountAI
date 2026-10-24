@@ -54,3 +54,15 @@ test('operator-facing copy does not contain common UTF-8 mojibake', () => {
   }
   assert.match(app, /CONFIDENCE \(0–1, OPTIONAL\)/);
 });
+
+
+test('all primary workspaces are reachable through named, stateful navigation controls', () => {
+  for (const label of ['Overview', 'Live Counter', 'Photo Review', 'History', 'Analytics', 'Governance, AI &amp; SOPs', 'Sites &amp; Cameras']) {
+    assert.ok(app.includes(label), `Missing workspace navigation label: ${label}`);
+  }
+  assert.match(app, /<nav className="workspace-nav" aria-label="Main workspace">/);
+  assert.match(app, /aria-pressed=\{activeWorkspace === 'dashboard'\}/);
+  assert.match(app, /aria-pressed=\{activeWorkspace === 'operations'\}/);
+  assert.match(app, /setActiveWorkspace\('governance'\)/);
+  assert.match(app, /setActiveWorkspace\('operations'\)/);
+});
