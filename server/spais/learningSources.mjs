@@ -146,7 +146,7 @@ export function createSqliteLearningSourceStore({
           : input.mimeType === 'image/jpeg' ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
           : input.mimeType === 'image/png' ? bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
           : input.mimeType === 'image/webp' ? bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP'
-          : input.mimeType === 'video/webm' ? bytes.toString('ascii', 0, 4) === '\u001aE\u00df\u00a3'
+          : input.mimeType === 'video/webm' ? bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))
           : input.mimeType === 'video/mp4' ? bytes.toString('ascii', 4, 8) === 'ftyp'
           : true;
         if (!signatureOkay) throw fail('file_signature_mismatch');
