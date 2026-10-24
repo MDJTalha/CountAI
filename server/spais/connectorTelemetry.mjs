@@ -124,11 +124,20 @@ export function createConnectorTelemetryReceiver({
             event_type TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             received_at TEXT NOT NULL,
-            trust_level TEXT NOT NULL CHECK (trust_level = 'connector-signed-report'),
-            UNIQUE (organization_id, site_id, connector_id, nonce)
+            trust_level TEXT NOT NULL CHECK (trust_level = 'connector-signed-report')
           );
           CREATE INDEX IF NOT EXISTS idx_spais_connector_telemetry_scope
             ON spais_connector_telemetry (organization_id, site_id, connector_id, sequence DESC);
+          CREATE TABLE IF NOT EXISTS spais_connector_telemetry_nonces (
+            organization_id TEXT NOT NULL,
+            site_id TEXT NOT NULL,
+            connector_id TEXT NOT NULL,
+            nonce TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            PRIMARY KEY (organization_id, site_id, connector_id, nonce)
+          );
+          CREATE INDEX IF NOT EXISTS idx_spais_connector_telemetry_nonces_expiry
+            ON spais_connector_telemetry_nonces (expires_at);
         `);
         return db;
       })().catch(error => { databasePromise = undefined; throw error; });
@@ -170,9 +179,18 @@ export function createConnectorTelemetryReceiver({
 
       const db = await getDatabase();
       const receivedAt = now().toISOString();
+      const nonceExpiresAt = new Date(signedAt + maxClockSkewSeconds * 1000).toISOString();
       const telemetryId = randomUUID();
       db.exec('BEGIN IMMEDIATE;');
       try {
+        // Signed timestamps are accepted only inside the clock-skew window, so expired
+        // nonce records can be purged safely without reopening a replay window.
+        db.prepare('DELETE FROM spais_connector_telemetry_nonces WHERE expires_at <= ?').run(receivedAt);
+        db.prepare(`
+          INSERT INTO spais_connector_telemetry_nonces
+            (organization_id, site_id, connector_id, nonce, expires_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(organizationId, siteId, connectorId, nonce, nonceExpiresAt);
         db.prepare(`
           INSERT INTO spais_connector_telemetry
             (telemetry_id, organization_id, site_id, connector_id, nonce, signed_timestamp,
