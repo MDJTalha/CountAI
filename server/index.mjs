@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { applySecurityHeaders, createApiRateLimiter, getClientRateLimitKey } from './securityControls.mjs';
 import { fileURLToPath } from 'node:url';
 import { extname, join, normalize } from 'node:path';
 import { createReadStream, existsSync, statSync } from 'node:fs';
@@ -21,6 +22,12 @@ import {
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const port = Number(process.env.PORT || 8787);
+const apiRateLimiter = createApiRateLimiter({
+  windowMs: Number(process.env.COUNTAI_RATE_LIMIT_WINDOW_MS || 60_000),
+  apiLimit: Number(process.env.COUNTAI_API_RATE_LIMIT || 120),
+  writeLimit: Number(process.env.COUNTAI_WRITE_RATE_LIMIT || 30)
+});
+const hstsEnabled = process.env.COUNTAI_ENABLE_HSTS === 'true';
 const operationalEventStore = process.env.SPAIS_EVENTS_DB_PATH
   ? createSqliteOperationalEventStore(process.env.SPAIS_EVENTS_DB_PATH)
   : createOperationalEventStore();
@@ -89,7 +96,22 @@ async function authorizeEventRequest(req, organizationId, siteId, action) {
   return { principal: authentication.principal };
 }
 const server = createServer(async (req, res) => {
+  applySecurityHeaders(res, { enableHsts: hstsEnabled });
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+
+  // Health probes remain available to load balancers. All other API routes are
+  // bounded per socket peer; write-heavy requests use a stricter separate budget.
+  if (url.pathname.startsWith('/api/') && url.pathname !== '/api/health') {
+    const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || 'GET');
+    const rate = apiRateLimiter.check({ key: getClientRateLimitKey(req), isWrite });
+    res.setHeader('x-ratelimit-limit', String(rate.limit));
+    res.setHeader('x-ratelimit-remaining', String(rate.remaining));
+    res.setHeader('x-ratelimit-reset', String(Math.ceil(rate.resetAt / 1000)));
+    if (!rate.allowed) {
+      res.setHeader('retry-after', String(rate.retryAfterSeconds));
+      return json(res, 429, { error: 'rate_limit_exceeded', retryAfterSeconds: rate.retryAfterSeconds });
+    }
+  }
   if (url.pathname === '/api/health') return json(res, 200, {ok:true, service:'countai-api', cloudRecognitionConfigured:false});
   if (url.pathname === '/api/v1/spais/contracts' && req.method === 'GET') {
     return json(res, 200, getSpaisContractManifest({
