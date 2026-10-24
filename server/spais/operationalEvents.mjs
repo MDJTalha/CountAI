@@ -120,3 +120,109 @@ export function createOperationalEvent({ organizationId, actorId, input, now = n
     details: input.details ?? {}
   };
 }
+
+
+const MAX_SQLITE_EVENT_LIMIT = 100;
+
+/**
+ * Durable, transactional single-host event storage using Node 22's built-in
+ * SQLite driver. Configure SPAIS_EVENTS_DB_PATH to select this adapter.
+ * Keep the database on a persistent, access-controlled volume and back it up.
+ * For horizontally scaled deployments, use a shared transactional database
+ * service rather than sharing a SQLite file across hosts.
+ */
+export function createSqliteOperationalEventStore(databasePath = process.env.SPAIS_EVENTS_DB_PATH) {
+  const path = typeof databasePath === 'string' && databasePath.trim()
+    ? (databasePath === ':memory:' ? ':memory:' : resolve(databasePath))
+    : null;
+  let databasePromise;
+
+  async function getDatabase() {
+    if (!path) {
+      throw Object.assign(new Error('event_store_not_configured'), { code: 'event_store_not_configured' });
+    }
+    if (!databasePromise) {
+      databasePromise = (async () => {
+        if (path !== ':memory:') await mkdir(dirname(path), { recursive: true });
+        const { DatabaseSync } = await import('node:sqlite');
+        const database = new DatabaseSync(path);
+        database.exec('PRAGMA foreign_keys = ON;');
+        if (path !== ':memory:') {
+          database.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;');
+        }
+        database.exec(`
+          CREATE TABLE IF NOT EXISTS spais_operational_events (
+            sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL UNIQUE,
+            organization_id TEXT NOT NULL,
+            site_id TEXT,
+            recorded_at TEXT NOT NULL,
+            event_json TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_spais_events_org_sequence
+            ON spais_operational_events (organization_id, sequence DESC);
+          CREATE INDEX IF NOT EXISTS idx_spais_events_org_site_sequence
+            ON spais_operational_events (organization_id, site_id, sequence DESC);
+        `);
+        return database;
+      })().catch(error => {
+        databasePromise = undefined;
+        throw error;
+      });
+    }
+    return databasePromise;
+  }
+
+  return {
+    configured: Boolean(path),
+    async append(event) {
+      const database = await getDatabase();
+      database.exec('BEGIN IMMEDIATE;');
+      try {
+        database.prepare(`
+          INSERT INTO spais_operational_events
+            (id, organization_id, site_id, recorded_at, event_json)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(
+          event.id,
+          event.organizationId,
+          event.siteId ?? null,
+          event.recordedAt,
+          JSON.stringify(event)
+        );
+        database.exec('COMMIT;');
+        return event;
+      } catch (error) {
+        try { database.exec('ROLLBACK;'); } catch {}
+        throw error;
+      }
+    },
+    async list({ organizationId, siteId, limit = 100 } = {}) {
+      if (typeof organizationId !== 'string' || !organizationId) {
+        throw Object.assign(new Error('organization_id_required'), { code: 'organization_id_required' });
+      }
+      const database = await getDatabase();
+      const boundedLimit = Number.isInteger(limit)
+        ? Math.max(1, Math.min(MAX_SQLITE_EVENT_LIMIT, limit))
+        : MAX_SQLITE_EVENT_LIMIT;
+      const rows = siteId
+        ? database.prepare(`
+            SELECT event_json FROM spais_operational_events
+            WHERE organization_id = ? AND site_id = ?
+            ORDER BY sequence DESC LIMIT ?
+          `).all(organizationId, siteId, boundedLimit)
+        : database.prepare(`
+            SELECT event_json FROM spais_operational_events
+            WHERE organization_id = ?
+            ORDER BY sequence DESC LIMIT ?
+          `).all(organizationId, boundedLimit);
+      return rows.map(row => JSON.parse(row.event_json));
+    },
+    async close() {
+      if (!databasePromise) return;
+      const database = await databasePromise;
+      database.close();
+      databasePromise = undefined;
+    }
+  };
+}
