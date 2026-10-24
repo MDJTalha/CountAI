@@ -18,7 +18,8 @@ Do not record faces, footage, credentials, or other private surveillance data in
 ## A. First load and navigation
 
 - [ ] Open the production preview at localhost or HTTPS; no blank screen or uncaught console errors.
-- [ ] Navigate Live Counter → Photo Counter & Review → History; each workspace is reachable and navigation remains responsive.
+- [ ] Navigate Overview → Live Counter → Photo Review → History → Analytics; each workspace is reachable, active navigation state is clear, and navigation remains responsive.
+- [ ] From Overview, open a recent saved photo session and confirm Photo Review loads it; verify the empty-history call to action opens Photo Review.
 - [ ] Reload each workspace and verify no crash.
 - [ ] Confirm no video or image is uploaded to an unconfigured cloud recognition endpoint; cloud recognition is intentionally not configured.
 
@@ -27,6 +28,10 @@ Do not record faces, footage, credentials, or other private surveillance data in
 - [ ] Load a supported JPG, PNG, WebP, or AVIF image below 12 MB.
 - [ ] Reject an unsupported file type and an image larger than 12 MB with a clear message.
 - [ ] Run local detection and verify the result canvas renders.
+- [ ] Verify photo overlay labels say “AI prediction” for model detections and hide confidence percentages by default.
+- [ ] Enable “Show model confidence on annotated photo”; verify a score appears and the UI explains it is not a calibrated probability of correctness.
+- [ ] Add a manual detection; verify its overlay label says “Manual” rather than “AI prediction”.
+- [ ] Disable diagnostic confidence again and verify scores disappear from the annotated canvas and exported annotated PNG.
 - [ ] Add a manual detection; verify category totals update.
 - [ ] Edit a detection and remove a detection; verify totals update after each operation.
 - [ ] Export CSV and annotated PNG; open each exported file and confirm it is non-empty.
@@ -38,6 +43,9 @@ Do not record faces, footage, credentials, or other private surveillance data in
 Use a camera and a consenting test scene. Keep the camera fixed and use a clear, repeatable walking path across the counting line.
 
 - [ ] Start the camera after granting browser permission; preview, line, label and status are visible.
+- [ ] Verify live overlay labels identify boxes as AI predictions and hide confidence percentages by default.
+- [ ] Open Diagnostics and camera health; enable “Show model confidence on overlay” and verify scores appear with the non-calibrated-probability explanation.
+- [ ] Disable diagnostic confidence and verify scores disappear; confirm the UI distinguishes visible detections from counted line-crossing events.
 - [ ] Confirm the reported resolution matches the camera's actual negotiated resolution.
 - [ ] Cross line A → B several times; count increments once per valid crossing.
 - [ ] Cross B → A; reverse-direction count increments separately.
