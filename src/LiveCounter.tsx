@@ -357,7 +357,7 @@ export function LiveCounter() {
       });
 
       const mode = modeRef.current;
-      const confidenceThreshold = mode === 'people' ? 0.45 : 0.60;
+      const confidenceThreshold = mode === 'people' ? 0.40 : 0.50;
       const found = raw.filter(d =>
         (d.confidence ?? 0) >= confidenceThreshold &&
         (mode === 'all' || d.category.toLowerCase() === 'person')
@@ -665,7 +665,7 @@ export function LiveCounter() {
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>Accepted detections</div><strong>{acceptedDetectionCount}</strong></div>
           <div><div style={{ opacity: 0.7, fontSize: 12 }}>Active tracks</div><strong>{trackedObjectCount}</strong></div>
         </div>
-        <p style={{ margin: '12px 0', fontSize: 12, opacity: 0.75 }}>Browser-camera telemetry only. A quiet scene is not considered a camera failure. {health.error ? `Issue: ${health.error}` : 'Health is based on video-frame freshness, stream state and local inference latency.'}{detectionMode === 'people' && acceptedDetectionCount === 0 ? ' No person detections currently pass the confidence filter; check lighting and framing, or temporarily select all supported classes to diagnose model output.' : ''}</p>
+        <p style={{ margin: '12px 0', fontSize: 12, lineHeight: 1.5, opacity: 0.75, minHeight: 36 }}>Browser-camera telemetry only. Empty scenes are normal. Raw and accepted detection counts update as frames are processed; use these diagnostics to investigate missed detections. {health.error ? `Issue: ${health.error}` : 'Camera health is based on video-frame freshness, stream state and local inference latency.'}</p>
         <div style={{ borderTop: '1px solid #293c43', paddingTop: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <strong style={{ fontSize: 13 }}>Recent health events</strong><button className="outline-button" onClick={clearHealthHistory} style={{ padding: '5px 8px', fontSize: 12 }}>Clear history</button>

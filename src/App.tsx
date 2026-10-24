@@ -28,6 +28,7 @@ export function App() {
   const [image, setImage] = useState<HTMLImageElement | null>(null), [imageUrl, setImageUrl] = useState(''), [filename, setFilename] = useState('');
   const [detections, setDetections] = useState<Detection[]>([]), [target, setTarget] = useState(''), [busy, setBusy] = useState(false), [engine, setEngine] = useState('Not loaded');
   const [message, setMessage] = useState('Choose a photo to begin. Your photo stays in this browser for local detection.'), [error, setError] = useState(false);
+  const [enhancedPhotoScan, setEnhancedPhotoScan] = useState(true);
   const [sessions, setSessions] = useState<CountSession[]>([]), [cameraOpen, setCameraOpen] = useState(false), [stream, setStream] = useState<MediaStream | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null), [editCategory, setEditCategory] = useState('object'), [editConfidence, setEditConfidence] = useState('');
   const totals = totalsByCategory(detections);
@@ -64,7 +65,7 @@ export function App() {
     try {
       const detector = await getDetector();
       await detector.load(); setEngine('COCO-SSD Â· loaded'); notify('Analyzing image in this browserâ€¦');
-      let result = await detector.detect(image);
+      let result = enhancedPhotoScan ? await detector.detectDetailed(image) : await detector.detect(image);
       const phrase = target.trim().toLowerCase();
       if (phrase && phrase !== 'all objects') {
         const aliases: Record<string,string[]> = { people:['person'], humans:['person'], bottles:['bottle'], cars:['car'], vehicles:['car','truck','bus','motorcycle','bicycle'], bikes:['bicycle','motorcycle'], motorcycles:['motorcycle'] };
@@ -119,6 +120,10 @@ export function App() {
       </div>}
       {cameraOpen && <div className="camera-wrap"><video ref={cameraRef} autoPlay playsInline muted/><div className="camera-actions"><button className="primary-button" onClick={capture}><Camera size={17}/> Capture photo</button><button className="outline-button" onClick={stopCamera}>Cancel</button></div></div>}
       <label className="field-label" htmlFor="target">WHAT SHOULD WE COUNT? <span>OPTIONAL</span></label><div className="target-row"><input id="target" value={target} onChange={e=>setTarget(e.target.value)} placeholder="e.g. bottles, people, parked cars"/><button className="primary-button analyze-button" onClick={analyze} disabled={!image || busy}>{busy ? <LoaderCircle className="spin" size={18}/> : <ScanSearch size={18}/>} {busy ? 'Analyzing' : 'Analyze photo'}</button></div>
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 12, fontSize: 13, lineHeight: 1.5, cursor: 'pointer' }}>
+        <input type="checkbox" checked={enhancedPhotoScan} onChange={e => setEnhancedPhotoScan(e.target.checked)} style={{ marginTop: 3, accentColor: '#42cdb1' }} />
+        <span><b>Enhanced detail scan (recommended)</b><br/><span style={{ opacity: 0.72 }}>Uses overlapping image crops to help find smaller supported objects. Slower than a single pass; it cannot recognize classes outside COCO-SSD and results still need review.</span></span>
+      </label>
       <div className={`notice ${error ? 'notice-error' : ''}`} role="status">{error ? <CircleHelp size={17}/> : <ShieldCheck size={17}/>}<span>{message}</span></div>
     </section>
     <section className="results-section" style={{ display: activeWorkspace === 'photo' ? undefined : 'none' }}><div className="section-heading"><div><span className="step">02 / REVIEW</span><h2>Your count, verified</h2></div><span className="result-number">{detections.length} <small>detections</small></span></div>
