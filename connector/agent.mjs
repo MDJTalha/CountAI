@@ -239,11 +239,8 @@ export async function runConnectorOnce(config, { fetchImpl = fetch, now = () => 
   let queuedCount = 0;
   let deliveryError = null;
   if (queuePath) {
-    const drained = await drainTelemetryQueue({
-      ...config, queuePath, _telemetryUrl: telemetryUrl, _timeoutMs: timeoutMs
-    }, privateKey, fetchImpl, now, results);
-    queuedCount = drained.queuedCount;
-    deliveryError = drained.deliveryError || lastDelivery.deliveryError || null;
+    queuedCount = (await readTelemetryQueue(queuePath)).length;
+    deliveryError = lastDelivery.deliveryError || null;
   }
   return {
     acceptedCount: results.length,
