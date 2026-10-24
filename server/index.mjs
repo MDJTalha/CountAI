@@ -461,6 +461,14 @@ const server = createServer(async (req, res) => {
       const site = await resourceStore.get({ organizationId, resourceType: 'site', resourceId: siteId });
       if (!site || site.status !== 'active') return json(res, 404, { error: 'site_not_found' });
       if (req.method === 'POST') {
+        // Link only an approved, immutable SOP version from the same tenant and site.
+        // The client cannot link a draft, another site's version, or another tenant's record.
+        if (input.sopVersionId) {
+          const linkedSop = await sopStore.get({ organizationId, siteId, sopId: input.sopVersionId });
+          if (!linkedSop || linkedSop.status !== 'approved') {
+            return json(res, 409, { error: 'linked_sop_not_approved_or_not_found' });
+          }
+        }
         const incident = await incidentStore.create({ organizationId, actorId: authentication.principal.subjectId, input });
         return json(res, 201, { incident });
       }

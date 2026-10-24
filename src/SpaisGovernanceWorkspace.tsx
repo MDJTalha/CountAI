@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { AlertCircle, CheckCircle2, ClipboardCheck, RefreshCw, ShieldCheck } from 'lucide-react';
 
 type Incident = {
-  id: string; siteId: string; title: string; description: string;
+  id: string; siteId: string; title: string; description: string; sopVersionId?: string | null;
   severity: 'low' | 'medium' | 'high' | 'critical';
   source: string; status: 'open' | 'acknowledged' | 'investigating' | 'resolved';
   evidenceState: string; createdAt: string;
@@ -42,11 +42,14 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
   const [incidentTitle, setIncidentTitle] = useState('');
   const [incidentDescription, setIncidentDescription] = useState('');
   const [incidentSeverity, setIncidentSeverity] = useState<Incident['severity']>('medium');
+  const [incidentSopVersionId, setIncidentSopVersionId] = useState('');
   const [sopPolicyId, setSopPolicyId] = useState('');
   const [sopTitle, setSopTitle] = useState('');
   const [sopContent, setSopContent] = useState('');
   const [sopCategory, setSopCategory] = useState('operations');
   const [transitionNotes, setTransitionNotes] = useState<Record<string, string>>({});
+
+  const approvedSops = sops.filter(sop => sop.status === 'approved');
 
   if (!visible) return null;
 
@@ -88,10 +91,10 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
     try {
       const response = await fetch(basePath('incidents'), {
         method: 'POST', headers: authHeaders(true),
-        body: JSON.stringify({ siteId: siteId.trim(), title: incidentTitle.trim(), description: incidentDescription.trim(), severity: incidentSeverity, source: 'operator' })
+        body: JSON.stringify({ siteId: siteId.trim(), title: incidentTitle.trim(), description: incidentDescription.trim(), severity: incidentSeverity, source: 'operator', ...(incidentSopVersionId ? { sopVersionId: incidentSopVersionId } : {}) })
       });
       await readResponse<{ incident: Incident }>(response);
-      setIncidentTitle(''); setIncidentDescription('');
+      setIncidentTitle(''); setIncidentDescription(''); setIncidentSopVersionId('');
       await refresh();
     } catch (error) {
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not create incident.');
@@ -166,6 +169,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
         <form className="governance-create-form" onSubmit={event => void submitIncident(event)}>
           <label>Incident title<input required maxLength={180} value={incidentTitle} onChange={event => setIncidentTitle(event.target.value)} placeholder="Describe the operational issue"/></label>
           <label>Severity<select value={incidentSeverity} onChange={event => setIncidentSeverity(event.target.value as Incident['severity'])}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
+          <label>Approved SOP version (optional)<select value={incidentSopVersionId} onChange={event => setIncidentSopVersionId(event.target.value)}><option value="">No linked SOP</option>{approvedSops.map(sop => <option key={sop.id} value={sop.id}>{sop.title} · v{sop.version}</option>)}</select></label>
           <label>Description<textarea maxLength={2000} rows={2} value={incidentDescription} onChange={event => setIncidentDescription(event.target.value)} placeholder="Optional context; do not include credentials or sensitive footage."/></label>
           <button className="primary-button" type="submit" disabled={busy || !token.trim() || !organizationId.trim() || !siteId.trim()}>Create incident</button>
         </form>
@@ -174,6 +178,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
           return <div className="governance-record" key={incident.id}>
             <div className="governance-record-heading"><b>{incident.title}</b><span className={`governance-status status-${incident.status}`}>{incident.status.replace('_', ' ')}</span></div>
             <p>{incident.description || 'No description supplied.'}</p>
+            {incident.sopVersionId && <small>Linked SOP: {sops.find(sop => sop.id === incident.sopVersionId)?.title || incident.sopVersionId}{sops.find(sop => sop.id === incident.sopVersionId) ? ` · v${sops.find(sop => sop.id === incident.sopVersionId)?.version}` : ''}</small>}
             <small>{incident.severity.toUpperCase()} · {dateLabel(incident.createdAt)}{incident.evidenceState === 'reported_not_independently_verified' ? ' · Recorder report not independently verified' : ''}</small>
             {next && <div className="governance-transition"><input aria-label={`Transition note for ${incident.title}`} value={transitionNotes[`incident:${incident.id}`] || ''} onChange={event => setTransitionNotes(current => ({ ...current, [`incident:${incident.id}`]: event.target.value }))} placeholder="Required audit note (3+ chars)"/><button className="subtle-button" type="button" disabled={busy} onClick={() => void transitionIncident(incident, next)}>{next === 'open' ? 'Reopen' : `Mark ${next}`}</button></div>}
           </div>;

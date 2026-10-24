@@ -13,13 +13,14 @@ function validText(value, max) { return typeof value === 'string' && value.trim(
 export function validateIncidentInput(input) {
   const errors = [];
   if (!input || typeof input !== 'object' || Array.isArray(input)) return { valid: false, errors: ['body_must_be_object'] };
-  const allowed = new Set(['siteId', 'title', 'description', 'severity', 'source']);
+  const allowed = new Set(['siteId', 'title', 'description', 'severity', 'source', 'sopVersionId']);
   for (const key of Object.keys(input)) if (!allowed.has(key)) errors.push('unsupported_field:' + key);
   if (!isResourceId(input.siteId)) errors.push('site_id_required');
   if (!validText(input.title, 180)) errors.push('title_must_be_1_to_180_characters');
   if (input.description !== undefined && (typeof input.description !== 'string' || input.description.length > 2000)) errors.push('description_must_be_at_most_2000_characters');
   if (input.severity !== undefined && !SEVERITIES.has(input.severity)) errors.push('invalid_severity');
   if (input.source !== undefined && !SOURCES.has(input.source)) errors.push('invalid_source');
+  if (input.sopVersionId !== undefined && !isResourceId(input.sopVersionId)) errors.push('invalid_sop_version_id');
   return { valid: errors.length === 0, errors };
 }
 
@@ -51,7 +52,9 @@ export function createSqliteIncidentStore(databasePath = process.env.SPAIS_EVENT
         const db = new DatabaseSync(path);
         db.exec('PRAGMA foreign_keys = ON;');
         if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;');
-        db.exec("CREATE TABLE IF NOT EXISTS spais_incidents (sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, organization_id TEXT NOT NULL, site_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, severity TEXT NOT NULL CHECK (severity IN ('low','medium','high','critical')), source TEXT NOT NULL CHECK (source IN ('operator','camera_health','recording_coverage')), status TEXT NOT NULL CHECK (status IN ('open','acknowledged','investigating','resolved')), evidence_state TEXT NOT NULL CHECK (evidence_state IN ('not_applicable','reported_not_independently_verified')), created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, resolved_at TEXT)");
+        db.exec("CREATE TABLE IF NOT EXISTS spais_incidents (sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, organization_id TEXT NOT NULL, site_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, severity TEXT NOT NULL CHECK (severity IN ('low','medium','high','critical')), source TEXT NOT NULL CHECK (source IN ('operator','camera_health','recording_coverage')), status TEXT NOT NULL CHECK (status IN ('open','acknowledged','investigating','resolved')), evidence_state TEXT NOT NULL CHECK (evidence_state IN ('not_applicable','reported_not_independently_verified')), created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, sop_version_id TEXT, resolved_at TEXT)");
+        const incidentColumns = db.prepare('PRAGMA table_info(spais_incidents)').all();
+        if (!incidentColumns.some(column => column.name === 'sop_version_id')) db.exec('ALTER TABLE spais_incidents ADD COLUMN sop_version_id TEXT');
         db.exec('CREATE INDEX IF NOT EXISTS idx_spais_incidents_scope ON spais_incidents (organization_id, site_id, sequence DESC)');
         db.exec('CREATE TABLE IF NOT EXISTS spais_audit_events (sequence INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, organization_id TEXT NOT NULL, site_id TEXT, actor_id TEXT NOT NULL, action TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, occurred_at TEXT NOT NULL, details_json TEXT NOT NULL)');
         db.exec('CREATE INDEX IF NOT EXISTS idx_spais_audit_org_sequence ON spais_audit_events (organization_id, sequence DESC)');
@@ -67,6 +70,7 @@ export function createSqliteIncidentStore(databasePath = process.env.SPAIS_EVENT
     return {
       contractVersion: 1, id: row.id, organizationId: row.organization_id, siteId: row.site_id,
       title: row.title, description: row.description, severity: row.severity, source: row.source,
+      sopVersionId: row.sop_version_id || null,
       status: row.status, evidenceState: row.evidence_state, createdBy: row.created_by,
       createdAt: row.created_at, updatedAt: row.updated_at, resolvedAt: row.resolved_at
     };
@@ -91,13 +95,13 @@ export function createSqliteIncidentStore(databasePath = process.env.SPAIS_EVENT
         severity: input.severity || 'medium', source: input.source || 'operator',
         status: 'open',
         evidenceState: input.source === 'recording_coverage' ? 'reported_not_independently_verified' : 'not_applicable',
-        createdBy: actorId, createdAt: timestamp, updatedAt: timestamp, resolvedAt: null
+        createdBy: actorId, createdAt: timestamp, updatedAt: timestamp, sopVersionId: input.sopVersionId || null, resolvedAt: null
       };
       db.exec('BEGIN IMMEDIATE;');
       try {
-        db.prepare('INSERT INTO spais_incidents (id, organization_id, site_id, title, description, severity, source, status, evidence_state, created_by, created_at, updated_at, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)')
-          .run(incident.id, organizationId, incident.siteId, incident.title, incident.description, incident.severity, incident.source, incident.status, incident.evidenceState, actorId, timestamp, timestamp);
-        audit(db, incident, actorId, 'incident.created', timestamp, { status: incident.status, severity: incident.severity, source: incident.source, evidenceState: incident.evidenceState });
+        db.prepare('INSERT INTO spais_incidents (id, organization_id, site_id, title, description, severity, source, status, evidence_state, created_by, created_at, updated_at, sop_version_id, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)')
+          .run(incident.id, organizationId, incident.siteId, incident.title, incident.description, incident.severity, incident.source, incident.status, incident.evidenceState, actorId, timestamp, timestamp, incident.sopVersionId);
+        audit(db, incident, actorId, 'incident.created', timestamp, { status: incident.status, severity: incident.severity, source: incident.source, evidenceState: incident.evidenceState, sopVersionId: incident.sopVersionId });
         db.exec('COMMIT;');
       } catch (error) { try { db.exec('ROLLBACK;'); } catch {} throw error; }
       return incident;

@@ -69,18 +69,18 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Connector public-key rotation is atomic: the prior enrolled key is revoked in the same transaction that activates the replacement. Explicit connector revocation invalidates active/pending enrollments and is audited; telemetry fails closed afterward.
 - Production-grade rate limiting/abuse controls, operational key management, and deployment monitoring.
 - Vendor-specific ONVIF/NVR adapters, independently verified recorder-side recording coverage evidence, durable offline store-and-forward, and customer lab acceptance.
-- SOP/policy governance API is being implemented in the current feature branch; it is not yet merged or CI-verified.
+- Incident-to-SOP version linkage is being implemented in the current feature branch; the linkage migration and cross-scope validation await CI and review.
 - Governed model candidate evaluation, approval and promotion.
 - Real-camera lab or customer pilot acceptance.
 
 
-## SOP/policy governance — implementation branch
+## SOP/policy governance — implemented on main
 - Adds versioned site-scoped SOP/policy records under `/api/v1/organizations/:organizationId/sops`.
 - Each new record starts as a draft; versions increment per organization/site/policy ID, preserving prior approved versions rather than overwriting them.
 - Lifecycle: draft → in_review → approved → retired; transitions require an operator note and create an audit event in the same SQLite transaction.
 - Approval uses a distinct `sop:approve` permission and rejects self-approval by the version creator. Approved versions cannot be returned to draft or edited; revisions require a new version.
 - Strict schema validation rejects client-supplied tenant, actor, version, status, or approval fields. The API is fail-closed until trusted bearer verification and SQLite storage are configured.
-- Automated HTTP tests cover authentication, scope and permission denial, spoofed fields, independent approval, immutable approved versions, version incrementing, and audit history. This remains pending CI and review until the branch checks finish.
+- Automated HTTP tests cover authentication, scope and permission denial, spoofed fields, independent approval, immutable approved versions, version incrementing, and audit history. The API is merged on main; frontend integration and incident linkage are separate implementation gates.
 - This is a single-host SQLite foundation; workflow UX, policy-to-incident linkage, retention operations, and customer acceptance remain future work.
 
 ## Safety and integration rules
@@ -98,3 +98,12 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 4. Implement customer-controlled camera/NVR connector operation and recorder-side recording assurance; enrollment alone does not prove a camera is connected or recording.
 5. Add incident/SOP governance and a governed learning lifecycle.
 6. Configure backup/retention/monitoring for single-host SQLite; use a shared transactional database service for multi-instance deployments.
+
+
+## Incident-to-SOP version linkage — feature branch
+- Adds optional `sopVersionId` to incident creation and persists the exact SOP version identifier with the incident and its audit event.
+- The server resolves the referenced SOP using the same trusted organization and site scope; only an approved SOP version can be linked. Draft, in-review, retired, nonexistent, cross-site and cross-tenant references are rejected.
+- Existing incident databases receive an idempotent additive SQLite column migration; existing incidents remain unlinked rather than being assigned an inferred procedure.
+- The governance workspace allows an operator to select an approved SOP version when creating an incident and displays the linked version in incident history.
+- This is traceability, not proof that an operator followed the procedure. Linkage does not alter the immutable SOP version or imply independent verification of recorder evidence.
+- Automated HTTP coverage exercises approved linkage, draft rejection, invalid identifiers, and existing incident lifecycle/audit behavior. CI and review are pending for this branch.
