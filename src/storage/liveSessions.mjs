@@ -80,7 +80,11 @@ export function appendLiveSessionEvent(storage, sessionId, event) {
 }
 
 export function recordLiveSessionEvent(storage, sessionId, type, payload, actorType = 'system', occurredAt = new Date().toISOString()) {
-  return appendLiveSessionEvent(storage, sessionId, makeEvent(sessionId, type, payload, actorType, occurredAt));
+  try {
+    return appendLiveSessionEvent(storage, sessionId, makeEvent(sessionId, type, payload, actorType, occurredAt));
+  } catch {
+    return false;
+  }
 }
 
 export function finishLiveSession(storage, sessionId, options = {}) {
