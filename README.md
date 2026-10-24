@@ -93,7 +93,7 @@ Ingested sources are queued for human review/annotation; they are **not automati
 
 The API now has baseline response security headers, opt-in HSTS for deployments that enforce HTTPS at the public edge, bounded configurable process-local API rate limits, and bounded HTTP header/request/keep-alive timeouts. Security-control unit and HTTP integration tests are included in CI and `npm test`.
 
-Operational configuration, data-retention policy requirements, recovery gates, and production limitations are documented in [Phase 1 Foundation Security](docs/PHASE1_FOUNDATION_SECURITY.md). Important limitations remain: the in-memory limiter is not distributed across server replicas; server-side learning-source deletion and expiry are not yet implemented; production OIDC/secret lifecycle, TLS gateway configuration, backup/restore drills, and independent security assessment still require deployment-specific work.
+Operational configuration, data-retention policy requirements, recovery gates, and production limitations are documented in [Phase 1 Foundation Security](docs/PHASE1_FOUNDATION_SECURITY.md). Important limitations remain: the in-memory limiter is not distributed across server replicas; learning-source expiry runs only when the maintenance command is scheduled; production OIDC/secret lifecycle, TLS gateway configuration, backup/restore drills, and independent security assessment still require deployment-specific work.
 
 ## Remaining implementation gates
 
