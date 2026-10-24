@@ -320,7 +320,7 @@ const server = createServer(async (req, res) => {
 
   // Report-based recording assessment is deliberately labelled unverified: signed connector metadata
   // can help find coverage gaps, but it is not independent proof that footage was recorded.
-  const recordingAssuranceRoute = url.pathname.match(/^\\/api\\/v1\\/organizations\\/([^/]+)\\/cameras\\/([^/]+)\\/recording-assurance$/);
+  const recordingAssuranceRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/cameras\/([^/]+)\/recording-assurance$/);
   if (recordingAssuranceRoute) {
     if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
     let organizationId;
