@@ -104,7 +104,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
     } finally { setBusy(false); }
   }
   async function loadSiteResources(nextSiteId: string) {
-    setSiteId(nextSiteId);
+    setSiteId(nextSiteId); setEnrollmentChallenge(null); setEnrollmentConnectorId('');
     if (!organizationId.trim() || !token.trim() || !nextSiteId) return;
     setBusy(true); setIsError(false); setMessage('Loading records for the selected site…');
     try {
@@ -179,7 +179,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
     <div className="ops-connect-panel">
       <div className="ops-panel-title"><div><Database size={18}/><div><h2>Trusted connection</h2><p>Credentials remain in component memory and are not saved to browser storage.</p></div></div><button className="primary-button" onClick={() => void loadAll()} disabled={busy}><RefreshCw size={15} className={busy ? 'spin' : ''}/>{busy ? 'Loading…' : 'Connect & refresh'}</button></div>
       <div className="ops-connection-fields">
-        <label>Organization ID<input value={organizationId} onChange={e => { setOrganizationId(e.target.value); setSiteId(''); setSites([]); setCameras([]); setConnectors([]); setEvents([]); setMessage('Organization changed. Refresh to load records authorized for the new organization.'); setIsError(false); }} placeholder="e.g. org-acme" autoComplete="off"/></label>
+        <label>Organization ID<input value={organizationId} onChange={e => { setOrganizationId(e.target.value); setSiteId(''); setSites([]); setCameras([]); setConnectors([]); setEvents([]); setEnrollmentChallenge(null); setEnrollmentConnectorId(''); setMessage('Organization changed. Refresh to load records authorized for the new organization.'); setIsError(false); }} placeholder="e.g. org-acme" autoComplete="off"/></label>
         <label>Active site<select value={siteId} onChange={e => void loadSiteResources(e.target.value)}><option value="">Choose an authorized site</option>{sites.map(site => <option key={site.id} value={site.id}>{site.name} · {site.id}</option>)}</select></label>
         <label className="ops-token-field">Bearer token<input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="Paste a trusted token" autoComplete="off" spellCheck={false}/></label>
       </div>
