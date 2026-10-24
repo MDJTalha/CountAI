@@ -3,6 +3,7 @@ import { Camera, Check, ChevronRight, CircleHelp, Download, ImagePlus, LoaderCir
 
 import { LiveCounter } from './LiveCounter';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { DashboardHome } from './DashboardHome';
 import { totalsByCategory } from './engine/counting';
 import { listSessions, saveSession, deleteSession } from './storage/sessions';
 import type { CountSession, Detection } from './types/counting';
@@ -24,7 +25,7 @@ function getDetector() {
 }
 const MAX_FILE = 12 * 1024 * 1024;
 export function App() {
-  const [activeWorkspace, setActiveWorkspace] = useState<'live' | 'photo' | 'history' | 'analytics'>('live');
+  const [activeWorkspace, setActiveWorkspace] = useState<'dashboard' | 'live' | 'photo' | 'history' | 'analytics'>('dashboard');
   const fileRef = useRef<HTMLInputElement>(null), cameraRef = useRef<HTMLVideoElement>(null), canvasRef = useRef<HTMLCanvasElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null), [imageUrl, setImageUrl] = useState(''), [filename, setFilename] = useState('');
   const [detections, setDetections] = useState<Detection[]>([]), [target, setTarget] = useState(''), [busy, setBusy] = useState(false), [engine, setEngine] = useState('Not loaded');
@@ -107,12 +108,16 @@ export function App() {
   async function eraseSession(id: string) { await deleteSession(id); setSessions(await listSessions()); }
   return <main className="app-shell">
     <header className="topbar"><a className="brand" href="#top" aria-label="CountAI home"><span className="brand-mark"><ScanSearch size={25}/></span><span><b>CountAI</b><small>BY AIVON</small></span></a><span className="local-badge"><ShieldCheck size={15}/> Local-first</span></header>
-    <nav aria-label="Main workspace" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 24px', margin: '4px auto 18px', maxWidth: 1240 }}>
-      <button className={activeWorkspace === 'live' ? 'primary-button' : 'outline-button'} aria-pressed={activeWorkspace === 'live'} onClick={() => setActiveWorkspace('live')}>Live Counter</button>
-      <button className={activeWorkspace === 'photo' ? 'primary-button' : 'outline-button'} aria-pressed={activeWorkspace === 'photo'} onClick={() => setActiveWorkspace('photo')}>Photo Counter & Review</button>
-      <button className={activeWorkspace === 'history' ? 'primary-button' : 'outline-button'} aria-pressed={activeWorkspace === 'history'} onClick={() => setActiveWorkspace('history')}>History</button>
-      <button className={activeWorkspace === 'analytics' ? 'primary-button' : 'outline-button'} aria-pressed={activeWorkspace === 'analytics'} onClick={() => setActiveWorkspace('analytics')}>Analytics</button>
+    <nav className="workspace-nav" aria-label="Main workspace">
+      <button className={activeWorkspace === 'dashboard' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'dashboard'} onClick={() => setActiveWorkspace('dashboard')}>Overview</button>
+      <button className={activeWorkspace === 'live' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'live'} onClick={() => setActiveWorkspace('live')}>Live Counter</button>
+      <button className={activeWorkspace === 'photo' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'photo'} onClick={() => setActiveWorkspace('photo')}>Photo Review</button>
+      <button className={activeWorkspace === 'history' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'history'} onClick={() => setActiveWorkspace('history')}>History</button>
+      <button className={activeWorkspace === 'analytics' ? 'nav-item active' : 'nav-item'} aria-pressed={activeWorkspace === 'analytics'} onClick={() => setActiveWorkspace('analytics')}>Analytics</button>
     </nav>
+    <div style={{ display: activeWorkspace === 'dashboard' ? undefined : 'none' }}>
+      <DashboardHome sessions={sessions} onNavigate={setActiveWorkspace} onOpenSession={(session) => { void openSession(session); setActiveWorkspace('photo'); }} />
+    </div>
     <section className="hero" style={{ display: activeWorkspace === 'live' ? undefined : 'none' }} id="top"><div className="eyebrow">VISUAL INTELLIGENCE Â· BUILT FOR THE REAL WORLD</div><h1>Count what<br/><em>you can see.</em></h1><p>Turn a photo into a reviewable count. AI suggests detections; you stay in control of the final numbers.</p><div className="feature-pills"><span><Smartphone size={14}/> Installable PWA</span><span><ShieldCheck size={14}/> Private by default</span><span><Wifi size={14}/> Local AI</span></div></section>
 <div style={{ display: activeWorkspace === 'live' ? 'block' : 'none' }}><LiveCounter /></div>
     <section className="workspace" style={{ display: activeWorkspace === 'photo' ? undefined : 'none' }}><div className="section-heading"><div><span className="step">01 / PHOTO COUNTER</span><h2>Start with an image</h2></div><span className="engine-state"><i className={engine.includes('loaded') ? 'ready' : ''}/>{engine}</span></div>
