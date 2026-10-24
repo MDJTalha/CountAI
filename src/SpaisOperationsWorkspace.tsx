@@ -79,12 +79,12 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
   }
   async function loadAll() {
     if (!validateConnection()) return;
-    const requestIdentity = JSON.stringify([organizationId.trim(), token.trim()]);
+    const requestScope = scopeKey;
     setBusy(true); setIsError(false); setMessage('Loading authorized sites and service records…');
     try {
       const siteResponse = await fetch(resourcePath('sites') + '?limit=100', { headers: headers(), cache: 'no-store' });
       const siteBody = await readResponse<{ resources: Resource[] }>(siteResponse);
-      if (requestIdentity !== JSON.stringify([organizationId.trim(), token.trim()]) || requestIdentity !== JSON.stringify([currentScopeKey.current && JSON.parse(currentScopeKey.current)[0], JSON.parse(currentScopeKey.current)[2]])) return;
+      if (requestScope !== currentScopeKey.current) return;
       setSites(siteBody.resources);
       const effectiveSite = siteBody.resources.some(site => site.id === siteId.trim()) ? siteId.trim() : (siteBody.resources[0]?.id || '');
       if (effectiveSite) {
@@ -100,7 +100,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
           readResponse<{ resources: Resource[] }>(connectorResponse),
           readResponse<{ events: OperationalEvent[] }>(eventResponse)
         ]);
-        if (requestIdentity !== JSON.stringify([organizationId.trim(), token.trim()]) || JSON.stringify([organizationId.trim(), effectiveSite, token.trim()]) !== currentScopeKey.current) return;
+        if (JSON.stringify([organizationId.trim(), effectiveSite, token.trim()]) !== currentScopeKey.current) return;
         setCameras(cameraBody.resources);
         setConnectors(connectorBody.resources);
         setEvents(eventBody.events);
@@ -110,6 +110,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
         setMessage('No accessible sites were returned. Create or request access to a site before loading camera and connector inventory.');
       }
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true);
       setMessage(error instanceof Error ? error.message : 'Could not load the authorized operations workspace.');
       setSites([]); setSiteId(''); setCameras([]); setConnectors([]); setEvents([]);
@@ -137,6 +138,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
       setCameras(cameraBody.resources); setConnectors(connectorBody.resources); setEvents(eventBody.events);
       setMessage(`Loaded selected site inventory and ${eventBody.events.length} operational event(s).`);
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not load the selected site.');
     } finally { setBusy(false); }
   }
@@ -157,6 +159,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
       await loadAll();
       setMessage(`${resourceType} metadata created. Inventory registration does not connect a camera or enroll a connector.`);
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not create inventory record.');
     } finally { setBusy(false); }
   }
@@ -181,6 +184,7 @@ export function SpaisOperationsWorkspace({ visible }: Props) {
       setEnrollmentChallenge(body.enrollment);
       setMessage('One-time enrollment challenge created. Complete proof-of-possession on the customer-controlled connector before it expires.');
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not create enrollment challenge.');
     } finally { setBusy(false); }
   }
