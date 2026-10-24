@@ -33,6 +33,16 @@ jobs:
       - name: Build production application
         run: npm run build
 
+      - name: Install Chromium for frontend browser smoke tests
+        run: |
+          npm install --prefix /tmp/countai-e2e --no-save --no-package-lock playwright@1.56.1
+          /tmp/countai-e2e/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Run frontend browser smoke tests
+        env:
+          COUNT_AI_PLAYWRIGHT_MODULE: /tmp/countai-e2e/node_modules/playwright/index.mjs
+        run: npm run test:browser-smoke
+
       - name: Run required regression suites
         shell: bash
         run: |
