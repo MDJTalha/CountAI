@@ -16,6 +16,14 @@ test('rate limiter allows the configured request budget and resets after its win
   assert.equal(limiter.check({ key: 'client-a' }).allowed, true);
 });
 
+test('read and write budgets are tracked independently', () => {
+  const limiter = createApiRateLimiter({ apiLimit: 1, writeLimit: 1, now: () => 100 });
+  assert.equal(limiter.check({ key: 'shared-client' }).allowed, true);
+  assert.equal(limiter.check({ key: 'shared-client' }).allowed, false);
+  assert.equal(limiter.check({ key: 'shared-client', isWrite: true }).allowed, true);
+  assert.equal(limiter.check({ key: 'shared-client', isWrite: true }).allowed, false);
+});
+
 test('rate limiter bounds tracked client keys', () => {
   const limiter = createApiRateLimiter({ maxTrackedKeys: 2, now: () => 100 });
   limiter.check({ key: 'a' });
