@@ -11,14 +11,15 @@
 - Versioned SPAIS API contract manifest at `GET /api/v1/spais/contracts`.
 - Contract descriptors for organizations, sites, cameras, connectors, live sessions, incidents, SOP versions, model releases and audit events.
 - Server-side resource-envelope validation and deny-by-default organization/site/action authorization helpers.
-- Tenant resource routes return an explicit `503 tenant_api_not_enabled` until trusted authentication, authorization and persistence are configured.
-- Regression tests cover contract versioning, invalid resource IDs, cross-organization denial, site-scope denial, action permissions, the manifest route and disabled tenant routes.
-- CI is configured to run the new `test:spais-contracts` suite alongside the existing regression suites.
+- Configurable HS256 bearer-token verifier requiring server-side secret, issuer and audience; checks signature, expiry, issuer, audience and tenant claims. It does not issue tokens or replace an identity provider.
+- Tenant resource routes remain disabled with an explicit `503 tenant_api_not_enabled` until trusted identity integration, authorization wiring and persistent storage are configured.
+- Regression tests cover contract versioning, invalid IDs, cross-organization denial, site-scope denial, action permissions, bearer-token verification, the manifest route and disabled tenant routes.
+- CI is configured to run both `test:spais-contracts` and `test:spais-auth` with the existing suites.
 
 ## Not yet implemented or verified
-- Trusted authentication adapter and identity/session lifecycle.
+- Production identity-provider integration, key rotation and operational secret management.
+- Wiring verified token principals into active tenant CRUD routes.
 - Persistent organization/site/camera/connector resource store and database migrations.
-- Enforcement of the authorization helper in live tenant CRUD routes; those routes intentionally remain disabled.
 - Customer-controlled edge connector and camera/NVR inventory.
 - Recorder-side recording coverage evidence.
 - Incident lifecycle and SOP/policy governance.
@@ -34,8 +35,9 @@
 6. Report each capability as planned, implemented, automated-test passed, lab-verified, pilot-accepted or production-approved with evidence.
 
 ## Next implementation gate
-1. Verify CI on PR #21 and fix reproducible failures.
-2. Implement trusted authentication and persistent tenant/site-scoped APIs with negative isolation tests.
-3. Integrate session and operational events with server persistence without silently replacing browser-local history.
-4. Design customer-controlled connector enrollment and recorder-side recording assurance.
-5. Add incident/SOP governance and a governed learning lifecycle.
+1. Verify CI after the authentication test suite addition and fix reproducible failures.
+2. Integrate a trusted identity provider and wire verified principals into tenant/site-scoped routes.
+3. Add durable tenant persistence and negative isolation tests.
+4. Integrate session and operational events with server persistence without silently replacing browser-local history.
+5. Design customer-controlled connector enrollment and recorder-side recording assurance.
+6. Add incident/SOP governance and a governed learning lifecycle.
