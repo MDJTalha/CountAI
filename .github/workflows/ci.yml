@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for script in test:engine test:analytics test:overlay-labels test:operational-events test:operational-event-store test:operational-events-sqlite test:operational-events-api test:spais-resources-api test:connector-telemetry-api test:connector-agent test:recording-assurance test:incidents-api test:spais-sops-api test:learning-candidates-api test:learning-evaluations-api test:live-sessions test:spais-contracts test:spais-auth test:spais-auth-oidc test:detection-enhancement test:camera-health test:camera-health-history test:pwa-build test:server; do
+          for script in test:cctv-first-frontend test:engine test:analytics test:overlay-labels test:operational-events test:operational-event-store test:operational-events-sqlite test:operational-events-api test:spais-resources-api test:connector-telemetry-api test:connector-agent test:recording-assurance test:incidents-api test:spais-sops-api test:learning-candidates-api test:learning-sources test:learning-sources-api test:learning-evaluations-api test:live-sessions test:spais-contracts test:spais-auth test:spais-auth-oidc test:detection-enhancement test:camera-health test:camera-health-history test:pwa-build test:server; do
             if ! node -e "process.exit(require('./package.json').scripts?.['${script}'] ? 0 : 1)"; then
               echo "::error::Required test script is missing: ${script}"
               exit 1

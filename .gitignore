@@ -35,3 +35,6 @@ Thumbs.db
 
 # Customer-local connector telemetry queue
 *.queue.json
+
+# Customer-local learning source media (never commit surveillance uploads)
+/data/learning-media/

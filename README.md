@@ -1,56 +1,101 @@
-# SPAIS — Surveillance & Operational Intelligence
+# CountAI — CCTV-first Surveillance & Operational Intelligence
 
-This repository evolves the existing CountAI React + TypeScript + Vite PWA into SPAIS. The current application provides browser-local object detection, counting/tracking helpers, IndexedDB photo-session storage, and an explicitly unconfigured cloud-recognition adapter. The wider SPAIS capabilities are being integrated in phases; do not treat planned connector, NVR recording assurance, incident/SOP governance, or governed-learning features as operational until implemented and validated.
+CountAI is being developed as a customer-controlled, CCTV-first operations platform. The primary product workflow is network camera and recorder integration—not photo upload and photo counting.
 
-## Current implementation
-- React/TypeScript mobile-first interface; responsive photo upload, camera capture, image annotations, category totals, manual add/edit/delete, CSV and annotated PNG export.
-- TensorFlow.js + COCO-SSD Lite MobileNetV2 for local object detection. First use requires downloading library/model assets; the PWA caches the app shell but does not claim offline inference.
-- Shared counting functions: totals by category, IoU matching, adjacent-frame track IDs, and line-crossing event helper.
-- IndexedDB local history via `idb`.
-- PWA manifest and generated service worker through `vite-plugin-pwa`.
-- Cloud recognition client adapter validates structured detection results. Server endpoint deliberately returns HTTP 501 until a provider is configured; no fake cloud success.
-- No facial identification or biometric identity matching.
+## Product direction
 
-## Requirements
-Node.js 20+ recommended. Use a current npm release.
+- Connect authorized IP cameras and customer-managed NVR/DVR systems through supported streams, vendor APIs, or a customer-controlled edge connector.
+- Organize cameras by organization and site.
+- Provide live monitoring, object detection/tracking, line-crossing counts, camera health, operational events, incidents, SOP governance, and recording-assurance reporting.
+- Keep video within customer-approved network boundaries wherever practical.
+- Distinguish inventory metadata, connector-reported state, observed video, and independently verified recording evidence.
+- Do not identify people by face or infer identity from temporary tracking IDs.
+
+## Current frontend state
+
+The production entrypoint now renders `src/CctvFirstApp.tsx`, a responsive CCTV-first shell with:
+
+- Overview and integration-readiness dashboard.
+- Live-monitoring placeholder that explicitly reports `NO VERIFIED STREAM` until a real stream adapter exists.
+- Sites, cameras, connectors, and operational events workspace using the existing authenticated APIs.
+- Incident/SOP, recording-assurance and AI governance workspace.
+- A governed learning workbench for authorized documents, reference images, human observations/corrections, and short video clips exported from customer-controlled recorders.
+- Tenant/site-scoped learning-source API, content hashes, restricted local media storage, consent confirmation, source status, and append-only ingestion audit records.
+- Clear boundaries for IP cameras, NVR/DVRs, ONVIF and RTSP/vendor API integrations.
+
+The legacy photo-counting component remains in the repository for now but is no longer the primary application entrypoint. Its UI and local-camera counting must not be represented as network-camera/NVR integration.
+
+## Important integration boundary
+
+The CCTV-first frontend does **not** yet mean that arbitrary cameras can be connected directly. A real deployment needs a compatible video or metadata path:
+
+- **RTSP:** commonly used for camera/NVR video streams; browser playback normally requires a suitable gateway/decoder or server/edge adapter.
+- **ONVIF:** device discovery/control and supported media profiles where the device supports them; compatibility varies by vendor and model.
+- **Vendor NVR/DVR APIs:** needed where a recorder exposes proprietary access or playback functions.
+- **HTTPS/HLS/WebRTC:** usable only when the camera/recorder or an approved gateway exposes a compatible endpoint.
+- **Wi-Fi/Ethernet:** network transports; they do not by themselves establish an application-level video stream.
+- **Bluetooth:** generally useful for provisioning, not continuous CCTV video transport.
+
+The system must not perform unauthorized network scanning, guess camera credentials, expose RTSP credentials in the browser, or claim that a camera is online merely because an inventory record exists. Prefer customer-controlled outbound connector traffic and read-only recorder permissions.
+
+## Architecture
+
+- `src/CctvFirstApp.tsx`: primary CCTV-first operator shell.
+- `src/CctvFirstApp.css`: responsive application layout.
+- `src/SpaisOperationsWorkspace.tsx`: authorized organization/site inventory, connector enrollment, and operational-event views.
+- `src/SpaisGovernanceWorkspace.tsx`: incident/SOP workflow, recording-assurance reports, and governance.
+- `src/LiveCounter.tsx`: legacy browser-attached camera counting component; not yet the network-stream monitor.
+- `src/engine/countingCore.mjs`: shared tracking/counting and line-crossing helpers.
+- `server/index.mjs`: API entrypoint and route integration.
+- `server/spais/`: contracts, authorization, operational events, connector telemetry, recording assurance, incidents, SOPs and learning governance.
+- `server/spais/learningSources.mjs`: authorized learning-source validation, media storage, content hashing, and ingestion audit records.
+- `src/SpaisLearningLab.tsx`: learning-source upload/observation workbench and model-candidate/evaluation governance.
+- `connector/agent.mjs`: customer-side connector agent and telemetry delivery.
+
+## Development
+
+Node.js 20+ is recommended.
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-For a production bundle and local server:
+Build the production application:
 
 ```bash
 npm run build
 npm run server
 ```
 
-Then open `http://localhost:8787`. On a phone, deploy behind HTTPS to enable installation and camera permission. Localhost is accepted for development.
-
-## Test the counting core
+## Validation
 
 ```bash
-npm run test:engine
+npm run test:cctv-first-frontend
+npm test
 ```
 
-## Architecture
-- `src/engine/localDetector.ts`: replaceable browser inference adapter (COCO-SSD fixed classes).
-- `src/engine/cloudRecognition.ts`: optional backend API adapter; the frontend contains no provider secret.
-- `src/engine/countingCore.mjs`: shared totals, IoU association and line-crossing logic.
-- `src/storage/sessions.ts`: IndexedDB local sessions.
-- `server/index.mjs`: minimal static server and explicit unconfigured cloud endpoint.
+The CCTV-first source-contract test checks the entrypoint, navigation, honest stream status, integration wording, responsive layout, and documentation. CI/build success is not a substitute for browser acceptance or a real-camera integration pilot.
 
-## Important limits / unfinished work
-1. COCO-SSD only recognizes its supported pretrained classes. Free-form phrases are currently a simple label filter, not open-vocabulary vision. `count red bottles`, shape recognition and arbitrary custom objects are not yet implemented as reliable capabilities.
-2. The tracker helper is implemented and tested independently, but live-video continuous detection UI, normalized line/zone setup, direction filters and robust long-occlusion re-identification are not yet wired into the product screen. IoU tracking can switch IDs during overlap/crowding.
-3. Cloud API provider/model, authentication, rate limiting, image-retention policy, schema integration and deployment are intentionally unconfigured. `/api/recognize` returns 501, not fabricated results.
-4. The app UI currently uses Google Fonts over the network; self-host fonts for fully offline/strict privacy distribution.
-5. No real image inference benchmark has been run in this environment: external package/model download availability is unverified. Unit tests validate the shared counting logic only, not detector accuracy.
-6. Review upstream model/library licensing and pin/host dependencies and model weights before commercial production use.
+## Autonomous learning — current implementation boundary
 
-## Privacy and security notes
-- Images are processed locally by the browser detector by default. The optional cloud adapter only sends an image when explicitly called; the current UI does not call it.
-- Do not add provider API keys to Vite `VITE_*` variables or browser code. Configure them only in a protected backend environment.
-- Validate upload size and MIME type client-side and repeat validation server-side before enabling cloud recognition.
-- Before production: add CSP, secure headers, dependency audit, rate limits, upload limits, deletion/retention rules, and a documented threat model.
+The first learning-data ingestion stage supports:
+
+- Text, Markdown, CSV, JSON and PDF document uploads (up to 8 MiB per file); text formats are indexed as text, while PDF files are stored for later extraction/review.
+- PNG, JPEG and WebP reference images (up to 8 MiB) with file-signature checks and SHA-256 hashes.
+- Human observation/correction notes with optional camera ID, timestamp and labels.
+- Short MP4/WebM clips exported from authorized recorders (up to 8 MiB), stored on the customer-controlled host.
+- Organization/site authorization, explicit upload authorization, bounded inputs, local file permissions, metadata-only listings, and ingestion audit entries.
+
+Ingested sources are queued for human review/annotation; they are **not automatically trusted training labels**. This stage does not yet extract text from PDFs, run image/video inference on uploaded media, continuously record a live network camera, or train/promote a model. Live recording requires the separate authorized camera/recorder stream adapter. Continuous model improvement requires the next stages: annotation and dataset versioning, training workers, a reproducible deep-learning/ML pipeline, independent holdout evaluation, drift monitoring and governed model promotion. Existing model-candidate/evaluation APIs provide a proposal/evaluation governance boundary, not a training engine.
+
+## Remaining implementation gates
+
+1. Implement a real camera/recorder adapter with an explicit supported-protocol contract.
+2. Validate at least one customer-approved IP camera or NVR/DVR model end-to-end.
+3. Add authenticated stream/session lifecycle APIs and server-side authorization.
+4. Connect live video to inference and tracking with measured latency, dropped-frame handling, and reconnect behavior.
+5. Validate multi-camera operator UI, camera health, event generation, recording assurance and incident/SOP workflows.
+6. Complete threat modeling, credential handling, retention, observability, backup/recovery and deployment hardening.
+
+Recording assurance remains `reported_not_independently_verified` until evidence is independently checked against the recorder. Signed connector telemetry is not proof that footage exists or is retrievable.
