@@ -172,3 +172,17 @@ button:active:not(:disabled){transform:translateY(1px)}
 .learning-transition button{flex:0 0 auto;white-space:nowrap}
 @media(max-width:760px){.learning-form-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.learning-candidate-heading{flex-direction:column}.learning-transition{align-items:stretch;flex-direction:column}.learning-transition button{width:100%}.learning-create-form{padding:11px}}
+
+
+/* Trusted evaluator result review. */
+.learning-status-stack{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:0 0 auto}
+.learning-evaluation-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.learning-evaluation-actions>small{font-size:9px;line-height:1.5;color:#8a6a31}
+.learning-evaluation-history{margin-top:10px;padding:10px 12px;background:#f8faf8;border:1px solid #e8eeea;border-radius:10px}
+.learning-evaluation-item{padding:9px 0;border-bottom:1px solid #e5ece7}
+.learning-evaluation-item:last-child{border-bottom:0}
+.learning-evaluation-item>div{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.learning-evaluation-item>div>b{font-size:10px;color:#2b6b54}
+.learning-evaluation-item>div>small,.learning-evaluation-item>small{font-size:9px;line-height:1.6;color:#7d8b83;overflow-wrap:anywhere}
+.learning-evaluation-item>p{font-size:10px;line-height:1.6;color:#63736b;margin:7px 0}
+@media(max-width:560px){.learning-status-stack{align-items:flex-start}.learning-evaluation-item>div{align-items:flex-start;flex-direction:column}}
