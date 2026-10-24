@@ -134,6 +134,13 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
       if (!validation.valid) throw Object.assign(invalid('invalid_resource', 'Resource validation failed'), { validationErrors: validation.errors });
       if (!isResourceId(organizationId) || !isResourceId(actorId)) throw invalid('invalid_trusted_scope');
       const database = await getDatabase();
+      if (resourceType !== 'site') {
+        const site = database.prepare(`
+          SELECT resource_id FROM spais_resources
+          WHERE organization_id = ? AND resource_type = 'site' AND resource_id = ?
+        `).get(organizationId, input.siteId);
+        if (!site) throw invalid('site_not_found');
+      }
       const timestamp = now.toISOString();
       const status = input.status ?? (resourceType === 'site' ? 'active' : 'pending');
       try {
