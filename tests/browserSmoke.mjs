@@ -31,8 +31,13 @@ async function waitForPreview() {
 
 try {
   await waitForPreview();
-  browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  browser = await chromium.launch({
+    headless: true,
+    args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+  });
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  await context.grantPermissions(['camera'], { origin: previewUrl });
+  const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
 
@@ -77,9 +82,20 @@ try {
   await dialog.getByRole('button', { name: 'Save correction' }).click();
   await dialog.waitFor({ state: 'hidden' });
   await page.getByText('Correction saved. Category totals have been recalculated.').waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Open camera' }).click();
+  const video = page.locator('video');
+  await video.waitFor({ state: 'visible' });
+  await page.waitForFunction(() => document.querySelector('video')?.srcObject
+    && document.querySelector('video').srcObject.getVideoTracks().some(track => track.readyState === 'live'));
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.waitForFunction(() => {
+    const stream = document.querySelector('video')?.srcObject;
+    return !stream || stream.getTracks().every(track => track.readyState === 'ended');
+  });
+
   assert.deepEqual(pageErrors, [], `Unexpected browser runtime errors: ${pageErrors.join('; ')}`);
 
-  console.log('Browser smoke passed: navigation, mobile viewport, dialog keyboard behavior, confidence validation, and correction persistence.');
+  console.log('Browser smoke passed: navigation, mobile viewport, dialog keyboard behavior, confidence validation, correction persistence, and camera cleanup.');
 } finally {
   await browser?.close();
   server.kill('SIGTERM');
