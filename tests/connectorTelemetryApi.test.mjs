@@ -218,6 +218,51 @@ test('enrolled connector telemetry verifies signatures, enforces freshness and r
   assert.equal(assurance.reportedCoveragePercent, 97.22);
   assert.equal(assurance.assessment, 'reported_coverage_gap');
   assert.equal(assurance.interpretation, 'reported_not_independently_verified');
+
+  const crossSiteAssurance = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/cameras/camera-1/recording-assurance?' +
+      new URLSearchParams({
+        siteId: 'site-2',
+        windowStart: '2026-10-24T00:00:00.000Z',
+        windowEnd: '2026-10-24T01:00:00.000Z'
+      }),
+    { headers: authHeaders() }
+  );
+  assert.equal(crossSiteAssurance.status, 403);
+  assert.equal((await crossSiteAssurance.json()).error, 'forbidden');
+
+  const crossTenantAssurance = await fetch(
+    baseUrl + '/api/v1/organizations/org-2/cameras/camera-1/recording-assurance?' +
+      new URLSearchParams({
+        siteId: 'site-1',
+        windowStart: '2026-10-24T00:00:00.000Z',
+        windowEnd: '2026-10-24T01:00:00.000Z'
+      }),
+    { headers: authHeaders() }
+  );
+  assert.equal(crossTenantAssurance.status, 403);
+  assert.equal((await crossTenantAssurance.json()).error, 'forbidden');
+
+  const missingCameraAssurance = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/cameras/missing-camera/recording-assurance?' +
+      assuranceQuery,
+    { headers: authHeaders() }
+  );
+  assert.equal(missingCameraAssurance.status, 404);
+  assert.equal((await missingCameraAssurance.json()).error, 'camera_not_found');
+
+  const futureAssuranceWindow = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/cameras/camera-1/recording-assurance?' +
+      new URLSearchParams({
+        siteId: 'site-1',
+        windowStart: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        windowEnd: new Date(Date.now() + 20 * 60 * 1000).toISOString()
+      }),
+    { headers: authHeaders() }
+  );
+  assert.equal(futureAssuranceWindow.status, 400);
+  assert.equal((await futureAssuranceWindow.json()).error, 'invalid_recording_assurance_query');
+
   const invalidAssuranceWindow = await fetch(
     baseUrl + '/api/v1/organizations/org-1/cameras/camera-1/recording-assurance?siteId=site-1&windowStart=bad&windowEnd=bad',
     { headers: authHeaders() }
