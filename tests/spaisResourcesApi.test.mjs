@@ -210,35 +210,41 @@ test('connector enrollment requires one-time RSA proof-of-possession and creates
   assert.equal(connector.status, 201);
   assert.equal((await connector.json()).resource.status, 'pending');
 
+  // The connector generates its key pair locally. The operator binds its public key before receiving a challenge.
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const publicKeyJwk = publicKey.export({ format: 'jwk' });
   const challengeResponse = await fetch(
     `${baseUrl}/api/v1/organizations/org-1/connectors/connector-enroll-1/enrollment-challenges?siteId=site-1`,
-    { method: 'POST', headers: auth() }
+    {
+      method: 'POST',
+      headers: { ...auth(), 'content-type': 'application/json' },
+      body: JSON.stringify({ publicKeyJwk })
+    }
   );
   assert.equal(challengeResponse.status, 201);
   const challenge = (await challengeResponse.json()).enrollment;
   assert.ok(challenge.challenge);
   assert.ok(challenge.expiresAt);
+  assert.ok(challenge.keyThumbprint);
 
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  const publicKeyJwk = publicKey.export({ format: 'jwk' });
   const proof = value => sign('RSA-SHA256', Buffer.from(challenge.enrollmentId + '.' + challenge.challenge), value).toString('base64url');
   const completionUrl = `${baseUrl}/api/v1/connector-enrollments/${challenge.enrollmentId}/complete`;
   const invalidProof = await fetch(completionUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ challenge: challenge.challenge, publicKeyJwk, signature: 'invalid-signature' })
+    body: JSON.stringify({ challenge: challenge.challenge, signature: 'invalid-signature' })
   });
   assert.equal(invalidProof.status, 401);
 
   const completion = await fetch(completionUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ challenge: challenge.challenge, publicKeyJwk, signature: proof(privateKey) })
+    body: JSON.stringify({ challenge: challenge.challenge, signature: proof(privateKey) })
   });
   assert.equal(completion.status, 200);
   const result = (await completion.json()).enrollment;
   assert.equal(result.connector.status, 'enrolled');
-  assert.ok(result.keyThumbprint);
+  assert.equal(result.keyThumbprint, challenge.keyThumbprint);
 
   const connectorRead = await fetch(
     `${baseUrl}/api/v1/organizations/org-1/connectors/connector-enroll-1?siteId=site-1`,
@@ -250,7 +256,7 @@ test('connector enrollment requires one-time RSA proof-of-possession and creates
   const replay = await fetch(completionUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ challenge: challenge.challenge, publicKeyJwk, signature: proof(privateKey) })
+    body: JSON.stringify({ challenge: challenge.challenge, signature: proof(privateKey) })
   });
   assert.equal(replay.status, 409);
 
