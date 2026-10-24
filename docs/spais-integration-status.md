@@ -64,13 +64,10 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Production identity-provider integration, key rotation and operational secret management.
 - Deployment-specific OIDC identity-provider configuration, identity lifecycle operations, emergency key revocation procedures and operational secret management.
 - Organization CRUD and broader tenant administration workflows beyond the current site/camera/connector metadata registry.
-- Signed connector telemetry ingestion with RSA proof, strict event payload schemas, five-minute timestamp window, per-connector nonce replay prevention, bounded metadata-only payloads, and append-only SQLite receipts. Recorder coverage is explicitly labelled `reported_not_independently_verified`; telemetry receipt does not prove a camera/NVR is actually recording.
-- Authorized, site-scoped connector telemetry reads require trusted bearer identity plus `connector:read`; returned recorder coverage remains labelled as reported rather than independently verified.
-- Connector public-key rotation is atomic: the prior enrolled key is revoked in the same transaction that activates the replacement. Explicit connector revocation invalidates active/pending enrollments and is audited; telemetry fails closed afterward.
 - Production-grade rate limiting/abuse controls, operational key management, and deployment monitoring.
 - Vendor-specific ONVIF/NVR adapters, independently verified recorder-side recording coverage evidence, durable offline store-and-forward, and customer lab acceptance.
-- Incident-to-SOP version linkage is being implemented in the current feature branch; the linkage migration and cross-scope validation await CI and review.
-- Governed model candidate evaluation, approval and promotion.
+- Incident-to-SOP version linkage is implemented on `main`: incidents retain the exact approved SOP version ID, and the API rejects unapproved or out-of-scope references.
+- A trusted independent model evaluator, verifiable evaluation attestations, shadow/canary rollout, production promotion and automated rollback are not implemented. The current feature branch adds a metadata-only proposal registry for offline-evaluation review; it does not execute training/evaluation or alter production inference.
 - Real-camera lab or customer pilot acceptance.
 
 
@@ -115,3 +112,12 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Returns `reported_coverage_high`, `reported_coverage_gap`, `incomplete_report_windows`, `insufficient_report_data`, or `no_reports` with the fixed interpretation `reported_not_independently_verified`.
 - Assessment uses metadata provided by the customer-controlled connector; it does not independently verify video segments, recorder retention, or actual footage. A high reported ratio is not a production recording guarantee.
 - Regression coverage exercises authentication, bounded query validation, reported percentage arithmetic, gaps/overlaps, missing/truncated reports, and the unverified interpretation. CI and review remain pending on the feature branch.
+
+
+## Governed learning proposal registry — feature branch
+- Adds authenticated site-scoped `GET`/`POST /api/v1/organizations/:organizationId/model-candidates` and `GET`/`PATCH` candidate routes.
+- Candidate records contain bounded proposal metadata, artifact and evaluation-dataset SHA-256 identifiers, and a human-authored offline evaluation plan. No model files or datasets are uploaded.
+- Lifecycle is deliberately limited to `proposed → under_review → evaluation_pending` or `rejected`; approval for `evaluation_pending` requires the separate `model:approve` permission and a different actor from the proposer.
+- The API rejects unsupported states such as `shadow`, `canary`, and `active`. There is no production promotion route and no claim that an evaluator ran.
+- Candidate state transitions and metadata creation are written to the shared SQLite audit log in the same transaction.
+- Automated HTTP coverage checks tenant/site isolation, spoofed fields, required digests and evaluation plan, self-approval denial, audit history, and rejection of attempted production promotion. CI and review remain pending for this branch.
