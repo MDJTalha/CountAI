@@ -241,6 +241,36 @@ export function createConnectorTelemetryReceiver({
           : 'signed_connector_report'
       }));
     },
+    async listCoverageReports({ organizationId, siteId, cameraId, windowStart, windowEnd } = {}) {
+      if (![organizationId, siteId, cameraId].every(isResourceId) ||
+          !Number.isFinite(Date.parse(windowStart)) || !Number.isFinite(Date.parse(windowEnd)) ||
+          Date.parse(windowEnd) <= Date.parse(windowStart)) {
+        throw fail('invalid_recording_assurance_query');
+      }
+      const db = await getDatabase();
+      const rows = db.prepare(`
+        SELECT site_id, connector_id, signed_timestamp, payload_json, received_at, trust_level
+        FROM spais_connector_telemetry
+        WHERE organization_id = ? AND site_id = ? AND event_type = 'recorder.recording_coverage'
+          AND json_extract(payload_json, '$.cameraId') = ?
+          AND julianday(json_extract(payload_json, '$.windowEnd')) > julianday(?)
+          AND julianday(json_extract(payload_json, '$.windowStart')) < julianday(?)
+        ORDER BY sequence ASC
+        LIMIT 20001
+      `).all(organizationId, siteId, cameraId, windowStart, windowEnd);
+      const truncated = rows.length > 20000;
+      return {
+        truncated,
+        reports: rows.slice(0, 20000).map(row => ({
+          siteId: row.site_id,
+          connectorId: row.connector_id,
+          signedAt: row.signed_timestamp,
+          payload: JSON.parse(row.payload_json),
+          receivedAt: row.received_at,
+          trustLevel: row.trust_level
+        }))
+      };
+    },
     async close() {
       if (!databasePromise) return;
       const db = await databasePromise;

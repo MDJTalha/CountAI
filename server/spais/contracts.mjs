@@ -58,7 +58,8 @@ export function getSpaisContractManifest({ authenticationConfigured = false, ten
         ? "Site, camera and connector metadata APIs are enabled with verified bearer-token scope and configured SQLite persistence."
         : "Tenant-scoped resource routes remain disabled until trusted authentication and persistent storage are configured.",
       "Browser-local sessions are not server-side tenant records.",
-      "Recorder health requires recorder-side evidence; browser camera status is not recording assurance."
+      "Recorder health requires recorder-side evidence; browser camera status is not recording assurance.",
+      "Report-based recording assessment computes reported coverage ratios and window continuity from signed connector reports; it is not independent proof of recording."
     ]
   });
 }

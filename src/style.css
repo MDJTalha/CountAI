@@ -122,3 +122,22 @@ button:active:not(:disabled){transform:translateY(1px)}
 .governance-footnote svg{flex-shrink:0;margin-top:1px}
 @media(max-width:760px){.governance-columns{grid-template-columns:1fr}}
 @media(max-width:560px){.governance-form-grid{grid-template-columns:1fr}.governance-token{grid-column:auto}.governance-transition{align-items:stretch;flex-direction:column}.governance-transition .subtle-button{width:100%}.governance-create-form{padding:11px}}
+
+
+/* SPAIS report-based recording assessment and connection controls. */
+.governance-header-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:7px}
+.governance-assurance{margin:0 0 15px}
+.governance-panel-copy{font-size:11px;line-height:1.7;color:#73827b;margin:0 0 14px}
+.governance-assurance-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:end}
+.governance-assurance-form label{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:700;color:#53675e;min-width:0}
+.governance-assurance-form input{width:100%;min-width:0;border:1px solid #dce5df;border-radius:10px;padding:11px 9px;background:#fcfdfc;color:var(--ink);font-size:11px}
+.governance-assurance-form .primary-button{grid-column:1/-1;justify-self:start}
+.governance-assessment-results{margin-top:16px;padding-top:15px;border-top:1px solid #eaf0ec}
+.governance-assessment-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.governance-assessment-metrics>div{min-width:0;padding:12px;border:1px solid #e7eee9;border-radius:12px;background:#f9fbfa}
+.governance-assessment-metrics small{display:block;font-size:9px;color:#7c8b83;line-height:1.5}
+.governance-assessment-metrics strong{display:block;margin-top:6px;font:800 19px/1.25 Manrope,sans-serif;color:#1f4d40;overflow-wrap:anywhere}
+.governance-assessment-metrics .governance-assessment-label{font-size:11px;text-transform:capitalize}
+.governance-assessment-detail{font-size:10px;line-height:1.7;color:#718078;margin:12px 0 8px}
+@media(max-width:760px){.governance-assurance-form{grid-template-columns:repeat(2,minmax(0,1fr))}.governance-assessment-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.governance-header-actions{width:100%;justify-content:flex-start}.governance-assurance-form{grid-template-columns:1fr}.governance-assurance-form .primary-button{grid-column:auto;width:100%}}

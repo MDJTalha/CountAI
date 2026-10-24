@@ -23,7 +23,7 @@ function token() {
     iss: issuer, aud: audience, sub: 'operator-1',
     exp: Math.floor(Date.now() / 1000) + 300,
     organizationIds: ['org-1'], sitesByOrganization: { 'org-1': ['site-1'] },
-    permissions: ['site:manage', 'camera:manage', 'connector:manage', 'connector:read', 'audit:read']
+    permissions: ['site:manage', 'site:read', 'camera:manage', 'camera:read', 'connector:manage', 'connector:read', 'audit:read']
   });
   const signature = createHmac('sha256', secret).update(header + '.' + payload).digest('base64url');
   return header + '.' + payload + '.' + signature;
@@ -181,6 +181,31 @@ test('enrolled connector telemetry verifies signatures, enforces freshness and r
   assert.equal(coverageResponse.status, 202);
   const coverageReceipt = (await coverageResponse.json()).receipt;
   assert.equal(coverageReceipt.interpretation, 'reported_not_independently_verified');
+
+  const assuranceQuery = new URLSearchParams({
+    siteId: 'site-1',
+    windowStart: '2026-10-24T00:00:00.000Z',
+    windowEnd: '2026-10-24T01:00:00.000Z'
+  });
+  const unauthenticatedAssurance = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/cameras/camera-1/recording-assurance?' + assuranceQuery
+  );
+  assert.equal(unauthenticatedAssurance.status, 401);
+  const assuranceResponse = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/cameras/camera-1/recording-assurance?' + assuranceQuery,
+    { headers: authHeaders() }
+  );
+  assert.equal(assuranceResponse.status, 200);
+  const assurance = (await assuranceResponse.json()).assessment;
+  assert.equal(assurance.reportCount, 1);
+  assert.equal(assurance.reportedCoveragePercent, 97.22);
+  assert.equal(assurance.assessment, 'reported_coverage_gap');
+  assert.equal(assurance.interpretation, 'reported_not_independently_verified');
+  const invalidAssuranceWindow = await fetch(
+    baseUrl + '/api/v1/organizations/org-1/cameras/camera-1/recording-assurance?siteId=site-1&windowStart=bad&windowEnd=bad',
+    { headers: authHeaders() }
+  );
+  assert.equal(invalidAssuranceWindow.status, 400);
 
   const unauthenticatedRead = await fetch(
     baseUrl + '/api/v1/organizations/org-1/connectors/connector-1/telemetry?siteId=site-1'
