@@ -712,7 +712,7 @@ const server = createServer(async (req, res) => {
   }
 
   // Learning sources are tenant/site scoped; uploaded media is stored on the customer-controlled host.
-  const learningSourcesRoute = url.pathname.match(/^\\/api\\/v1\\/organizations\\/([^/]+)\\/learning-sources$/);
+  const learningSourcesRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/learning-sources$/);
   if (learningSourcesRoute) {
     if (!['GET', 'POST'].includes(req.method)) return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET, POST' });
     let organizationId;
