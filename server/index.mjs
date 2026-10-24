@@ -21,11 +21,20 @@ import {
 } from './spais/operationalEvents.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
-const port = Number(process.env.PORT || 8787);
+function positiveIntegerSetting(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+  return value;
+}
+const port = positiveIntegerSetting('PORT', 8787);
 const apiRateLimiter = createApiRateLimiter({
-  windowMs: Number(process.env.COUNTAI_RATE_LIMIT_WINDOW_MS || 60_000),
-  apiLimit: Number(process.env.COUNTAI_API_RATE_LIMIT || 120),
-  writeLimit: Number(process.env.COUNTAI_WRITE_RATE_LIMIT || 30)
+  windowMs: positiveIntegerSetting('COUNTAI_RATE_LIMIT_WINDOW_MS', 60_000),
+  apiLimit: positiveIntegerSetting('COUNTAI_API_RATE_LIMIT', 120),
+  writeLimit: positiveIntegerSetting('COUNTAI_WRITE_RATE_LIMIT', 30)
 });
 const hstsEnabled = process.env.COUNTAI_ENABLE_HSTS === 'true';
 const operationalEventStore = process.env.SPAIS_EVENTS_DB_PATH
@@ -936,8 +945,8 @@ const server = createServer(async (req, res) => {
   createReadStream(file).pipe(res);
 });
 // Bound connection/header handling to reduce slow-client resource exhaustion.
-server.headersTimeout = Number(process.env.COUNTAI_HEADERS_TIMEOUT_MS || 15_000);
-server.requestTimeout = Number(process.env.COUNTAI_REQUEST_TIMEOUT_MS || 120_000);
-server.keepAliveTimeout = Number(process.env.COUNTAI_KEEPALIVE_TIMEOUT_MS || 5_000);
+server.headersTimeout = positiveIntegerSetting('COUNTAI_HEADERS_TIMEOUT_MS', 15_000);
+server.requestTimeout = positiveIntegerSetting('COUNTAI_REQUEST_TIMEOUT_MS', 120_000);
+server.keepAliveTimeout = positiveIntegerSetting('COUNTAI_KEEPALIVE_TIMEOUT_MS', 5_000);
 server.maxHeadersCount = 100;
 server.listen(port, '0.0.0.0', () => console.log(`CountAI API listening on ${port}`));
