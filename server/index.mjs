@@ -6,6 +6,7 @@ import { getSpaisContractManifest, authorizeSpaisAction, isResourceId } from './
 import { verifySpaisBearerTokenAsync } from './spais/authOidc.mjs';
 import { createSqliteSpaisResourceStore, validateSpaisResourceInput, validateSpaisResourcePatch } from './spais/resources.mjs';
 import { createConnectorTelemetryReceiver } from './spais/connectorTelemetry.mjs';
+import { evaluateRecordingCoverageReports, validateRecordingAssuranceQuery } from './spais/recordingAssurance.mjs';
 import { createSqliteIncidentStore, validateIncidentInput, validateIncidentTransition } from './spais/incidents.mjs';
 import { createSqliteSopStore, validateSopInput, validateSopTransition } from './spais/sops.mjs';
 import {
@@ -314,6 +315,61 @@ const server = createServer(async (req, res) => {
       if (error.code === 'invalid_public_key') return json(res, 400, { error: 'invalid_public_key' });
       console.error('SPAIS enrollment completion failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'enrollment_completion_failed' });
+    }
+  }
+
+  // Report-based recording assessment is deliberately labelled unverified: signed connector metadata
+  // can help find coverage gaps, but it is not independent proof that footage was recorded.
+  const recordingAssuranceRoute = url.pathname.match(/^\\/api\\/v1\\/organizations\\/([^/]+)\\/cameras\\/([^/]+)\\/recording-assurance$/);
+  if (recordingAssuranceRoute) {
+    if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
+    let organizationId;
+    let cameraId;
+    try {
+      organizationId = decodeURIComponent(recordingAssuranceRoute[1]);
+      cameraId = decodeURIComponent(recordingAssuranceRoute[2]);
+    } catch { return json(res, 400, { error: 'invalid_resource_id' }); }
+    const siteId = url.searchParams.get('siteId') || undefined;
+    const windowStart = url.searchParams.get('windowStart') || undefined;
+    const windowEnd = url.searchParams.get('windowEnd') || undefined;
+    const maxReportAgeRaw = url.searchParams.get('maxReportAgeMinutes');
+    const maxReportAgeMinutes = maxReportAgeRaw === null ? undefined : Number(maxReportAgeRaw);
+    const query = { siteId, cameraId, windowStart, windowEnd, maxReportAgeMinutes };
+    const validation = validateRecordingAssuranceQuery(query);
+    if (!isResourceId(organizationId) || !validation.valid) {
+      return json(res, 400, { error: 'invalid_recording_assurance_query', details: validation.errors });
+    }
+    if (!spaisAuthConfigured || !resourceStore.configured || !connectorTelemetryReceiver.configured) {
+      return json(res, 503, { error: 'recording_assurance_not_enabled', message: 'Configure trusted bearer identity and persistent SPAIS SQLite storage first.' });
+    }
+    const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
+    if (!authentication.authenticated) {
+      return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
+    }
+    const authorization = authorizeSpaisAction({
+      principal: authentication.principal, organizationId, siteId, action: 'camera:read'
+    });
+    if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
+    try {
+      const camera = await resourceStore.get({ organizationId, resourceType: 'camera', resourceId: cameraId, siteId });
+      if (!camera) return json(res, 404, { error: 'camera_not_found' });
+      const normalizedStart = new Date(Date.parse(windowStart)).toISOString();
+      const normalizedEnd = new Date(Date.parse(windowEnd)).toISOString();
+      const coverage = await connectorTelemetryReceiver.listCoverageReports({
+        organizationId, siteId, cameraId, windowStart: normalizedStart, windowEnd: normalizedEnd
+      });
+      const assessment = evaluateRecordingCoverageReports({
+        organizationId, siteId, cameraId, reports: coverage.reports, reportsTruncated: coverage.truncated,
+        windowStart: normalizedStart, windowEnd: normalizedEnd,
+        maxReportAgeMinutes: maxReportAgeMinutes ?? 10
+      });
+      return json(res, 200, { assessment });
+    } catch (error) {
+      if (error.code === 'invalid_recording_assurance_query') {
+        return json(res, 400, { error: error.code });
+      }
+      console.error('SPAIS recording assurance assessment failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'recording_assurance_assessment_failed' });
     }
   }
 
