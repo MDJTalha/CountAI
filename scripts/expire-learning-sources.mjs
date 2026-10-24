@@ -10,8 +10,12 @@ if (!process.env.SPAIS_EVENTS_DB_PATH) {
 } else {
   try {
     const store = createSqliteLearningSourceStore();
-    const result = await store.purgeExpired({ retentionDays });
-    process.stdout.write(JSON.stringify({ task: 'learning-source-retention', ...result }) + String.fromCharCode(10));
+    try {
+      const result = await store.purgeExpired({ retentionDays });
+      process.stdout.write(JSON.stringify({ task: 'learning-source-retention', ...result }) + String.fromCharCode(10));
+    } finally {
+      await store.close();
+    }
   } catch (error) {
     console.error('Learning-source retention maintenance failed:', error?.code || error?.name || 'unknown_error');
     process.exitCode = 1;
