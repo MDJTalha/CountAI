@@ -27,7 +27,7 @@ export function DashboardHome({ sessions, onNavigate, onOpenSession }: Props) {
       <div>
         <span className="step">SPAIS OPERATIONS / OVERVIEW</span>
         <h1 id="dashboard-title">Your operations, at a glance.</h1>
-        <p>Monitor the capabilities available in this build, open counting workflows, and review local activity. Camera and recorder integrations are shown separately so unavailable evidence is never mistaken for healthy status.</p>
+        <p>Monitor implemented capabilities, open counting workflows, and review local activity. Backend governance APIs are shown separately from configured operator workflows, and camera/recorder status is never inferred without evidence.</p>
       </div>
       <span className="local-badge"><ShieldCheck size={14}/> Private by default</span>
     </div>
@@ -85,13 +85,15 @@ export function DashboardHome({ sessions, onNavigate, onOpenSession }: Props) {
       </article>
       <article className="dashboard-card dashboard-side" aria-labelledby="spais-readiness-title">
         <div className="dashboard-card-head"><h2 id="spais-readiness-title">SPAIS capability readiness</h2><Activity size={17} color="#3b8c76"/></div>
-        <div className="dashboard-stat-row"><span>Photo detection & review</span><strong>Available</strong></div>
-        <div className="dashboard-stat-row"><span>Browser-attached live camera</span><strong>Available</strong></div>
-        <div className="dashboard-stat-row"><span>Local photo history</span><strong>{validSessions.length ? 'Available' : 'No records yet'}</strong></div>
-        <div className="dashboard-stat-row"><span>Customer edge connector</span><strong>Not connected</strong></div>
-        <div className="dashboard-stat-row"><span>NVR recording assurance</span><strong>Not connected</strong></div>
-        <div className="dashboard-stat-row"><span>Incidents, SOP governance & learning</span><strong>Planned</strong></div>
-        <p style={{fontSize:10,lineHeight:1.65,color:'#84928b',margin:'14px 0 0'}}>Status reflects this application build, not a remote health check. Browser camera access does not verify an NVR, recording coverage, or customer-network connectivity.</p>
+        <div className="dashboard-stat-row"><span>Photo detection & review</span><strong className="capability-state is-available">Available</strong></div>
+        <div className="dashboard-stat-row"><span>Browser-attached live camera</span><strong className="capability-state is-available">Available</strong></div>
+        <div className="dashboard-stat-row"><span>Local photo history</span><strong className="capability-state is-available">{validSessions.length ? 'Available' : 'No records yet'}</strong></div>
+        <div className="dashboard-stat-row"><span>Customer edge connector</span><strong className="capability-state is-pending">Not connected</strong></div>
+        <div className="dashboard-stat-row"><span>NVR recording assurance</span><strong className="capability-state is-pending">Not verified</strong></div>
+        <div className="dashboard-stat-row"><span>Incident lifecycle API</span><strong className="capability-state is-configurable">Backend implemented</strong></div>
+        <div className="dashboard-stat-row"><span>SOP versioning & approval API</span><strong className="capability-state is-configurable">Backend implemented</strong></div>
+        <div className="dashboard-stat-row"><span>Governed autonomous learning</span><strong className="capability-state is-planned">Planned</strong></div>
+        <p className="capability-disclaimer">Backend implementation does not mean the service is configured or ready for operators. Incident and SOP APIs require trusted identity and persistent storage; camera and recorder status require customer-controlled evidence.</p>
       </article>
     </div>
   </section>;
