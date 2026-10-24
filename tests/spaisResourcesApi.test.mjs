@@ -19,7 +19,7 @@ function token({
   sub = 'operator-1',
   organizationIds = ['org-1'],
   sitesByOrganization = { 'org-1': ['site-1'] },
-  permissions = ['site:read', 'site:manage', 'camera:read', 'camera:manage', 'connector:read', 'connector:manage']
+  permissions = ['site:read', 'site:manage', 'camera:read', 'camera:manage', 'connector:read', 'connector:manage', 'audit:read']
 } = {}) {
   const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
   const header = encode({ alg: 'HS256', typ: 'JWT' });
@@ -131,6 +131,25 @@ test('site, camera and connector metadata require verified identity and enforce 
   assert.equal(listed.status, 200);
   assert.deepEqual((await listed.json()).resources.map(item => item.id), ['camera-1']);
 
+  const updated = await fetch(`${baseUrl}/api/v1/organizations/org-1/cameras/camera-1?siteId=site-1`, {
+    method: 'PATCH',
+    headers: { ...auth(), 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Lobby Camera Updated' })
+  });
+  assert.equal(updated.status, 200);
+  assert.equal((await updated.json()).resource.name, 'Lobby Camera Updated');
+
+  const audit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit`, { headers: auth() });
+  assert.equal(audit.status, 200);
+  const auditBody = await audit.json();
+  assert.ok(auditBody.events.some(item => item.action === 'resource.created' && item.resourceId === 'camera-1'));
+  assert.ok(auditBody.events.some(item => item.action === 'resource.updated' && item.resourceId === 'camera-1'));
+
+  const noAuditPermission = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit`, {
+    headers: auth({ permissions: ['site:read'] })
+  });
+  assert.equal(noAuditPermission.status, 403);
+
   const missingSiteFilter = await fetch(`${baseUrl}/api/v1/organizations/org-1/cameras`, { headers: auth() });
   assert.equal(missingSiteFilter.status, 400);
 
@@ -154,6 +173,16 @@ test('resource API rejects spoofed fields, credentials, duplicate IDs and orphan
     metadata: { accessToken: 'should-not-be-stored' }
   });
   assert.equal(credential.status, 400);
+
+  const falseCameraStatus = await post('/api/v1/organizations/org-1/cameras', {
+    id: 'camera-active', siteId: 'site-1', name: 'Unverified Camera', status: 'active'
+  });
+  assert.equal(falseCameraStatus.status, 400);
+
+  const falseConnectorStatus = await post('/api/v1/organizations/org-1/connectors', {
+    id: 'connector-active', siteId: 'site-1', name: 'Unenrolled Connector', status: 'active'
+  });
+  assert.equal(falseConnectorStatus.status, 400);
 
   const orphan = await post('/api/v1/organizations/org-1/cameras', {
     id: 'camera-orphan', siteId: 'site-missing', name: 'Orphan Camera'
