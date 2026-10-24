@@ -122,6 +122,7 @@ const server = createServer(async (req, res) => {
       }
       if (error.code === 'telemetry_timestamp_out_of_window') return json(res, 401, { error: error.code });
       if (error.code === 'connector_identity_not_active') return json(res, 401, { error: error.code });
+      if (error.code === 'telemetry_camera_scope_mismatch') return json(res, 403, { error: error.code });
       if (error.code === 'invalid_telemetry_signature') return json(res, 401, { error: error.code });
       if (error.code === 'telemetry_replay_detected') return json(res, 409, { error: error.code });
       console.error('SPAIS connector telemetry failed:', error?.code || error?.name || 'unknown_error');
