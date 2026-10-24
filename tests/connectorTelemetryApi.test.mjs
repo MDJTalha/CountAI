@@ -132,12 +132,22 @@ test('enrolled connector telemetry verifies signatures, enforces freshness and r
 
   const heartbeat = makeMessage('connector.heartbeat', {
     status: 'healthy', uptimeSeconds: 3600, version: '1.0.0'
-  });
+  }, { deliveryId: 'delivery-heartbeat-1' });
   const accepted = await post(telemetryPath, heartbeat, { 'content-type': 'application/json' });
   assert.equal(accepted.status, 202);
   const receipt = (await accepted.json()).receipt;
   assert.equal(receipt.trustLevel, 'connector-signed-report');
   assert.equal(receipt.eventType, 'connector.heartbeat');
+
+  // Offline retries use a new nonce/signature but preserve the delivery ID and payload.
+  const retry = makeMessage('connector.heartbeat', {
+    status: 'healthy', uptimeSeconds: 3600, version: '1.0.0'
+  }, { deliveryId: 'delivery-heartbeat-1' });
+  const duplicate = await post(telemetryPath, retry, { 'content-type': 'application/json' });
+  assert.equal(duplicate.status, 202);
+  const duplicateReceipt = (await duplicate.json()).receipt;
+  assert.equal(duplicateReceipt.duplicate, true);
+  assert.equal(duplicateReceipt.telemetryId, receipt.telemetryId);
 
   const replay = await post(telemetryPath, heartbeat, { 'content-type': 'application/json' });
   assert.equal(replay.status, 409);
