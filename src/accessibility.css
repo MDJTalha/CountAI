@@ -1,0 +1,70 @@
+/* Frontend accessibility and small-screen interaction hardening.
+   Keep these overrides isolated so visual styling can evolve without hiding
+   keyboard focus or making the main workspace navigation unusable on mobile. */
+
+:where(button, a, input, select, textarea, video, [tabindex]):focus-visible {
+  outline: 3px solid #137c68;
+  outline-offset: 3px;
+}
+
+:where(button, a, input, select, textarea) {
+  touch-action: manipulation;
+}
+
+.workspace-nav {
+  scrollbar-width: thin;
+  overscroll-behavior-inline: contain;
+}
+
+@media (max-width: 760px) {
+  .workspace-nav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    padding: 8px 2px 12px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .workspace-nav > .nav-item {
+    flex: 0 0 auto;
+    min-height: 42px;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 520px) {
+  .workspace-nav > .nav-item {
+    padding-inline: 12px;
+    font-size: 12px;
+  }
+
+  .app-shell {
+    overflow-x: clip;
+  }
+
+  .ops-connection-fields input,
+  .ops-connection-fields select,
+  .ops-create-form input,
+  .ops-create-form select,
+  .ops-enrollment-form select,
+  .ops-enrollment-form textarea,
+  .ops-challenge-result textarea {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
