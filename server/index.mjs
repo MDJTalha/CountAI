@@ -54,6 +54,14 @@ const spaisAuthConfigured = Boolean(
   process.env.SPAIS_AUTH_ISSUER && process.env.SPAIS_AUTH_AUDIENCE
 );
 const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.webmanifest':'application/manifest+json', '.png':'image/png', '.ico':'image/x-icon' };
+function staticCacheControl(file) {
+  const name = file.slice(file.lastIndexOf('/') + 1);
+  // Vite's content-hashed assets are immutable; entry HTML, service worker,
+  // manifest and unhashed public files must revalidate after a deployment.
+  return /[-.][A-Za-z0-9_-]{8,}\\.(?:js|css|woff2?|png|svg)$/i.test(name)
+    ? 'public, max-age=31536000, immutable'
+    : 'no-cache';
+}
 function json(res, status, body, extraHeaders = {}) {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -942,7 +950,12 @@ const server = createServer(async (req, res) => {
   if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
   if (!existsSync(file)) file = join(root, 'index.html');
   if (!existsSync(file)) { res.writeHead(503, {'content-type':'text/plain'}); return res.end('SPAIS has not been built. Run npm run build first.'); }
-  res.writeHead(200, {'content-type':mime[extname(file)] || 'application/octet-stream','x-content-type-options':'nosniff','referrer-policy':'strict-origin-when-cross-origin'});
+  res.writeHead(200, {
+    'content-type': mime[extname(file)] || 'application/octet-stream',
+    'cache-control': staticCacheControl(file),
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'strict-origin-when-cross-origin'
+  });
   createReadStream(file).pipe(res);
 });
 // Bound connection/header handling to reduce slow-client resource exhaustion.
