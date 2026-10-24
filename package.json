@@ -12,6 +12,7 @@
     "test:camera-health": "node --test tests/cameraHealth.test.mjs",
     "test:camera-health-history": "node --test tests/cameraHealthHistory.test.mjs",
     "server": "node server/index.mjs",
+    "maintenance:expire-learning-sources": "node scripts/expire-learning-sources.mjs",
     "test:server": "node --test tests/server.test.mjs",
     "test:security-controls": "node --test tests/securityControls.test.mjs",
     "test:security-controls-api": "node --test tests/securityControlsApi.test.mjs",
