@@ -10,6 +10,7 @@ import { evaluateRecordingCoverageReports, validateRecordingAssuranceQuery } fro
 import { createSqliteIncidentStore, validateIncidentInput, validateIncidentTransition } from './spais/incidents.mjs';
 import { createSqliteSopStore, validateSopInput, validateSopTransition } from './spais/sops.mjs';
 import { createSqliteLearningCandidateStore, validateLearningCandidateInput, validateLearningCandidateTransition } from './spais/learningCandidates.mjs';
+import { getTrustedLearningEvaluatorConfig, validateLearningEvaluationReport, verifyLearningEvaluationAttestation } from './spais/learningEvaluations.mjs';
 import {
   createOperationalEvent,
   createOperationalEventStore,
@@ -616,6 +617,71 @@ const server = createServer(async (req, res) => {
       if (error.code === 'invalid_sop_transition') return json(res, 409, { error: error.code, details: error.validationErrors || [] });
       console.error('SPAIS SOP request failed:', error?.code || error?.name || 'unknown_error');
       return json(res, 500, { error: 'sop_request_failed' });
+    }
+  }
+
+  // Signed evaluator reports are accepted only from the server-configured evaluator key.
+  const learningEvaluationRoute = url.pathname.match(/^\/api\/v1\/organizations\/([^/]+)\/model-candidates\/([^/]+)\/evaluations$/);
+  if (learningEvaluationRoute) {
+    if (!['GET', 'POST'].includes(req.method)) return json(res, 405, { error: 'method_not_allowed' }, { allow: 'GET, POST' });
+    let organizationId;
+    let candidateId;
+    try {
+      organizationId = decodeURIComponent(learningEvaluationRoute[1]);
+      candidateId = decodeURIComponent(learningEvaluationRoute[2]);
+    } catch { return json(res, 400, { error: 'invalid_resource_id' }); }
+    if (!isResourceId(organizationId) || !isResourceId(candidateId)) return json(res, 400, { error: 'invalid_resource_id' });
+    const siteId = url.searchParams.get('siteId') || undefined;
+    if (!isResourceId(siteId)) return json(res, 400, { error: 'site_id_required' });
+    if (!spaisAuthConfigured || !resourceStore.configured || !learningCandidateStore.configured) {
+      return json(res, 503, { error: 'learning_evaluation_api_not_enabled' });
+    }
+    const authentication = await verifySpaisBearerTokenAsync(req.headers.authorization);
+    if (!authentication.authenticated) return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
+    const action = req.method === 'GET' ? 'model:read' : 'model:evaluate';
+    const authorization = authorizeSpaisAction({ principal: authentication.principal, organizationId, siteId, action });
+    if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
+    try {
+      const site = await resourceStore.get({ organizationId, resourceType: 'site', resourceId: siteId });
+      if (!site || site.status !== 'active') return json(res, 404, { error: 'site_not_found' });
+      const candidate = await learningCandidateStore.get({ organizationId, siteId, candidateId });
+      if (!candidate) return json(res, 404, { error: 'learning_candidate_not_found' });
+      if (req.method === 'GET') {
+        const requestedLimit = Number(url.searchParams.get('limit') || 100);
+        const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 100;
+        const evaluations = await learningCandidateStore.listEvaluations({ organizationId, siteId, candidateId, limit });
+        return json(res, 200, { organizationId, siteId, candidateId, evaluations, count: evaluations.length, limit });
+      }
+      let report;
+      try { report = await readJsonBody(req, 16 * 1024); }
+      catch (error) {
+        const status = error.code === 'request_body_too_large' ? 413 : 400;
+        return json(res, status, { error: error.code || 'invalid_request_body' });
+      }
+      const validation = validateLearningEvaluationReport(report);
+      if (!validation.valid) return json(res, 400, { error: 'invalid_evaluation_report', details: validation.errors });
+      const evaluatorConfig = getTrustedLearningEvaluatorConfig();
+      if (!evaluatorConfig) {
+        return json(res, 503, { error: 'trusted_evaluator_not_configured', message: 'Configure the evaluator RSA public JWK and explicit acceptance thresholds before accepting reports.' });
+      }
+      const verification = verifyLearningEvaluationAttestation({ organizationId, siteId, candidateId, report, evaluatorConfig });
+      if (!verification.valid) {
+        const status = verification.reason === 'trusted_evaluator_not_configured' ? 503 : 401;
+        return json(res, status, { error: verification.reason });
+      }
+      const evaluation = await learningCandidateStore.recordEvaluation({
+        organizationId, siteId, candidateId, actorId: authentication.principal.subjectId, report, verification
+      });
+      return json(res, 201, { evaluation });
+    } catch (error) {
+      if (error.code === 'learning_candidate_not_found') return json(res, 404, { error: error.code });
+      if (error.code === 'learning_candidate_not_evaluation_pending' || error.code === 'learning_evaluation_digest_mismatch') {
+        return json(res, 409, { error: error.code });
+      }
+      if (error.code === 'learning_evaluation_replay_detected') return json(res, 409, { error: error.code });
+      if (error.code === 'invalid_learning_evaluation_query') return json(res, 400, { error: error.code });
+      console.error('SPAIS learning evaluation request failed:', error?.code || error?.name || 'unknown_error');
+      return json(res, 500, { error: 'learning_evaluation_request_failed' });
     }
   }
 
