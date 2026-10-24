@@ -123,6 +123,19 @@ test('operational events API enforces trusted identity, permissions and tenant/s
   });
   assert.equal(siteDenied.status, 403);
 
+  const unscopedList = await fetch(`${baseUrl}/api/v1/organizations/org-1/events`, {
+    headers: { authorization: `Bearer ${token()}` }
+  });
+  assert.equal(unscopedList.status, 400);
+  assert.equal((await unscopedList.json()).error, 'site_id_required');
+
+  const missingSiteOnCreate = await fetch(`${baseUrl}/api/v1/organizations/org-1/events`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token()}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ eventType: 'line.crossed', sessionId: 'session-no-site' })
+  });
+  assert.equal(missingSiteOnCreate.status, 400);
+
   const listed = await fetch(`${baseUrl}/api/v1/organizations/org-1/events?siteId=site-1`, {
     headers: { authorization: `Bearer ${token()}` }
   });
