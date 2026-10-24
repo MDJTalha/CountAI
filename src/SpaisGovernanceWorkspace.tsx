@@ -111,6 +111,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
       setSops(sopBody.sops);
       setMessage(`Loaded ${incidentBody.incidents.length} incident(s) and ${sopBody.sops.length} SOP version(s) for the selected site.`);
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true);
       setMessage(error instanceof Error ? error.message : 'Could not load governance records.');
       setIncidents([]); setSops([]);
@@ -139,6 +140,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
       setCoverageAssessment(body.assessment);
       setMessage(`Assessment returned: ${body.assessment.assessment.replaceAll('_', ' ')}. Connector reports are not independently verified recording proof.`);
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true); setCoverageAssessment(null);
       setMessage(error instanceof Error ? error.message : 'Could not assess recording coverage.');
     } finally { setBusy(false); }
@@ -157,6 +159,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
       setIncidentTitle(''); setIncidentDescription(''); setIncidentSopVersionId('');
       await refresh();
     } catch (error) {
+      if (requestScope !== currentScopeKey.current) return;
       setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not create incident.');
     } finally { setBusy(false); }
   }
@@ -173,7 +176,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
       if (requestScope !== currentScopeKey.current) return;
       setTransitionNotes(current => ({ ...current, [`incident:${incident.id}`]: '' }));
       await refresh();
-    } catch (error) { setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not update incident.'); }
+    } catch (error) { if (requestScope !== currentScopeKey.current) return; setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not update incident.'); }
     finally { setBusy(false); }
   }
   async function submitSop(event: FormEvent<HTMLFormElement>) {
@@ -189,7 +192,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
       if (requestScope !== currentScopeKey.current) return;
       setSopTitle(''); setSopContent('');
       await refresh();
-    } catch (error) { setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not create SOP version.'); }
+    } catch (error) { if (requestScope !== currentScopeKey.current) return; setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not create SOP version.'); }
     finally { setBusy(false); }
   }
   async function transitionSop(sop: Sop, status: Sop['status']) {
@@ -205,7 +208,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
       if (requestScope !== currentScopeKey.current) return;
       setTransitionNotes(current => ({ ...current, [`sop:${sop.id}`]: '' }));
       await refresh();
-    } catch (error) { setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not update SOP status.'); }
+    } catch (error) { if (requestScope !== currentScopeKey.current) return; setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not update SOP status.'); }
     finally { setBusy(false); }
   }
   function incidentNext(status: Incident['status']): Incident['status'] | null {
