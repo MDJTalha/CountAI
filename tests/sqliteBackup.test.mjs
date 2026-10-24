@@ -11,6 +11,7 @@ test('SQLite backup creates a consistent, integrity-checked, private snapshot', 
   const sourcePath = join(dir, 'events.sqlite');
   const backupDirectory = join(dir, 'backups');
   const source = new DatabaseSync(sourcePath);
+  let backup;
   source.exec('PRAGMA journal_mode=WAL; CREATE TABLE audit_events (id INTEGER PRIMARY KEY, action TEXT NOT NULL);');
   source.prepare('INSERT INTO audit_events (action) VALUES (?)').run('test.event');
 
@@ -22,7 +23,7 @@ test('SQLite backup creates a consistent, integrity-checked, private snapshot', 
     });
     assert.equal(result.integrity, 'ok');
     assert.ok(result.bytes > 0);
-    const backup = new DatabaseSync(result.backupPath);
+    backup = new DatabaseSync(result.backupPath);
     assert.equal(backup.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.deepEqual(backup.prepare('SELECT action FROM audit_events').get(), { action: 'test.event' });
     backup.close();
@@ -31,6 +32,7 @@ test('SQLite backup creates a consistent, integrity-checked, private snapshot', 
       assert.ok((info.mode & 0o077) === 0, 'backup file must not be accessible to group/other users');
     }
   } finally {
+    try { backup?.close(); } catch {}
     source.close();
     await rm(dir, { recursive: true, force: true });
   }
