@@ -338,21 +338,35 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
         throw error;
       }
     },
-    async list({ organizationId, resourceType, siteId, limit = 100 } = {}) {
+    async list({ organizationId, resourceType, siteId, resourceIds, limit = 100 } = {}) {
       if (!isResourceId(organizationId) || !RESOURCE_TYPES.has(resourceType)) throw invalid('invalid_resource_query');
+      if (resourceIds !== undefined && (!Array.isArray(resourceIds) || resourceIds.some(id => !isResourceId(id)))) {
+        throw invalid('invalid_resource_query');
+      }
+      if (resourceIds !== undefined && resourceIds.length === 0) return [];
       const database = await getDatabase();
       const boundedLimit = Number.isInteger(limit) ? Math.max(1, Math.min(100, limit)) : 100;
-      const rows = siteId
-        ? database.prepare(`
-            SELECT * FROM spais_resources
-            WHERE organization_id = ? AND resource_type = ? AND site_id = ?
-            ORDER BY sequence DESC LIMIT ?
-          `).all(organizationId, resourceType, siteId, boundedLimit)
-        : database.prepare(`
-            SELECT * FROM spais_resources
-            WHERE organization_id = ? AND resource_type = ?
-            ORDER BY sequence DESC LIMIT ?
-          `).all(organizationId, resourceType, boundedLimit);
+      let rows;
+      if (resourceIds !== undefined) {
+        const placeholders = resourceIds.map(() => '?').join(', ');
+        rows = database.prepare(`
+          SELECT * FROM spais_resources
+          WHERE organization_id = ? AND resource_type = ? AND resource_id IN (${placeholders})
+          ORDER BY sequence DESC LIMIT ?
+        `).all(organizationId, resourceType, ...resourceIds, boundedLimit);
+      } else if (siteId) {
+        rows = database.prepare(`
+          SELECT * FROM spais_resources
+          WHERE organization_id = ? AND resource_type = ? AND site_id = ?
+          ORDER BY sequence DESC LIMIT ?
+        `).all(organizationId, resourceType, siteId, boundedLimit);
+      } else {
+        rows = database.prepare(`
+          SELECT * FROM spais_resources
+          WHERE organization_id = ? AND resource_type = ?
+          ORDER BY sequence DESC LIMIT ?
+        `).all(organizationId, resourceType, boundedLimit);
+      }
       return rows.map(toResource);
     },
     async listAudit({ organizationId, siteId, limit = 100 } = {}) {

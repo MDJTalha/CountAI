@@ -122,6 +122,20 @@ test('site, camera and connector metadata require verified identity and enforce 
   assert.equal(siteBody.createdBy, 'operator-1');
   assert.equal(siteBody.resourceType, 'site');
 
+  const secondSite = await post('/api/v1/organizations/org-1/sites', {
+    id: 'site-2', name: 'Restricted Branch'
+  }, { sitesByOrganization: { 'org-1': ['site-1', 'site-2'] } });
+  assert.equal(secondSite.status, 201);
+
+  const scopedSites = await fetch(`${baseUrl}/api/v1/organizations/org-1/sites`, { headers: auth() });
+  assert.equal(scopedSites.status, 200);
+  assert.deepEqual((await scopedSites.json()).resources.map(item => item.id), ['site-1']);
+
+  const allowedSite = await fetch(`${baseUrl}/api/v1/organizations/org-1/sites/site-1`, { headers: auth() });
+  assert.equal(allowedSite.status, 200);
+  const forbiddenSite = await fetch(`${baseUrl}/api/v1/organizations/org-1/sites/site-2`, { headers: auth() });
+  assert.equal(forbiddenSite.status, 403);
+
   const camera = await post('/api/v1/organizations/org-1/cameras', {
     id: 'camera-1', siteId: 'site-1', name: 'Lobby Camera', metadata: { manufacturer: 'Example', protocol: 'onvif' }
   });
@@ -140,13 +154,17 @@ test('site, camera and connector metadata require verified identity and enforce 
   assert.equal(updated.status, 200);
   assert.equal((await updated.json()).resource.name, 'Lobby Camera Updated');
 
-  const audit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit`, { headers: auth() });
+  const unscopedAudit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit`, { headers: auth() });
+  assert.equal(unscopedAudit.status, 400);
+  assert.equal((await unscopedAudit.json()).error, 'site_id_required');
+
+  const audit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit?siteId=site-1`, { headers: auth() });
   assert.equal(audit.status, 200);
   const auditBody = await audit.json();
   assert.ok(auditBody.events.some(item => item.action === 'resource.created' && item.resourceId === 'camera-1'));
   assert.ok(auditBody.events.some(item => item.action === 'resource.updated' && item.resourceId === 'camera-1'));
 
-  const noAuditPermission = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit`, {
+  const noAuditPermission = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit?siteId=site-1`, {
     headers: auth({ permissions: ['site:read'] })
   });
   assert.equal(noAuditPermission.status, 403);
@@ -330,7 +348,8 @@ test('connector enrollment requires one-time RSA proof-of-possession and creates
   });
   assert.equal(replay.status, 409);
 
-  const audit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit`, { headers: auth() });
+  const audit = await fetch(`${baseUrl}/api/v1/organizations/org-1/audit?siteId=site-1`, { headers: auth() });
+  assert.equal(audit.status, 200);
   const events = (await audit.json()).events;
   assert.ok(events.some(item => item.action === 'connector.enrollment_challenge_created'));
   assert.ok(events.some(item => item.action === 'connector.enrollment_completed'));

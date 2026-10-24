@@ -206,6 +206,11 @@ const server = createServer(async (req, res) => {
     const action = req.method === 'GET' ? 'session:read' : 'session:manage';
     const access = await authorizeEventRequest(req, organizationId, siteId, action);
     if (!access.principal) return json(res, access.status, access.body, access.headers);
+    // Session/operational events are site-scoped. Do not let a site-limited token
+    // omit siteId and read events across every site in its organization.
+    if (req.method === 'GET' && !siteId) {
+      return json(res, 400, { error: 'site_id_required' });
+    }
 
     if (!operationalEventStore.configured) {
       return json(res, 503, {
@@ -429,10 +434,13 @@ const server = createServer(async (req, res) => {
     if (!authentication.authenticated) {
       return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
     }
+    // A single-site inventory operation must authorize the site named in the path.
+    // Collection reads are filtered to the principal's explicit site scope below.
+    const authorizationSiteId = resourceType === 'site' && resourceId ? resourceId : siteId;
     const authorization = authorizeSpaisAction({
       principal: authentication.principal,
       organizationId,
-      ...(siteId ? { siteId } : {}),
+      ...(authorizationSiteId ? { siteId: authorizationSiteId } : {}),
       action
     });
     if (!authorization.allowed) {
@@ -468,7 +476,11 @@ const server = createServer(async (req, res) => {
       }
       const requestedLimit = Number(url.searchParams.get('limit') || 100);
       const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 100;
-      const resources = await resourceStore.list({ organizationId, resourceType, siteId, limit });
+      const scopedSites = authentication.principal.sitesByOrganization;
+      const resourceIds = resourceType === 'site' && scopedSites && Object.hasOwn(scopedSites, organizationId)
+        ? scopedSites[organizationId]
+        : undefined;
+      const resources = await resourceStore.list({ organizationId, resourceType, siteId, resourceIds, limit });
       return json(res, 200, { organizationId, resourceType, resources, count: resources.length, limit });
     } catch (error) {
       if (error.code === 'invalid_resource' || error.code === 'invalid_resource_patch') {
@@ -793,10 +805,13 @@ const server = createServer(async (req, res) => {
     if (!authentication.authenticated) {
       return json(res, 401, { error: 'unauthorized', reason: authentication.reason }, { 'www-authenticate': 'Bearer' });
     }
+    // Audit entries can contain site-level operational details. Require an explicit
+    // site filter because the current token contract has no separate org-wide audit scope.
+    if (!siteId) return json(res, 400, { error: 'site_id_required' });
     const authorization = authorizeSpaisAction({
       principal: authentication.principal,
       organizationId,
-      ...(siteId ? { siteId } : {}),
+      siteId,
       action: 'audit:read'
     });
     if (!authorization.allowed) return json(res, 403, { error: 'forbidden', reason: authorization.reason });
