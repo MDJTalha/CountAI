@@ -2,6 +2,7 @@ export type OperationalEventType =
   | 'live_session_started'
   | 'live_session_stopped'
   | 'crossing_counted'
+  | 'count_reset'
   | 'camera_health_changed'
   | 'inference_health_changed'
   | 'operator_correction';
