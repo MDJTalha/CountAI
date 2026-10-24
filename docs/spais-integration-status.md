@@ -39,6 +39,11 @@ CountAI is being evolved into SPAIS in the existing React/TypeScript/Vite PWA. P
 - Tests for event validation, session persistence, deletion, corrupt storage and reset semantics.
 - CI runs the new live-session test suite along with existing SPAIS/security suites.
 
+## Operator experience update
+- Dashboard now reads the same-origin health endpoint and versioned SPAIS contract manifest to show live backend reachability, trusted-identity configuration, tenant API readiness and connector-enrollment prerequisites.
+- The panel has explicit loading/error states and manual refresh; it does not request camera feeds, expose tenant data, or equate API readiness with camera/NVR health.
+- Recorder status remains explicitly unverified until customer-controlled recorder evidence is independently checked.
+
 ## Not yet implemented or verified
 - Production identity-provider integration, key rotation and operational secret management.
 - Deployment-specific OIDC identity-provider configuration, identity lifecycle operations, emergency key revocation procedures and operational secret management.
