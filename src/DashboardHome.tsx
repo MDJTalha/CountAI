@@ -1,5 +1,6 @@
 import { Activity, ArrowRight, BarChart3, Camera, ImagePlus, Layers3, ShieldCheck, Sparkles } from 'lucide-react';
 import type { CountSession } from './types/counting';
+import { SpaisSystemStatus } from './SpaisSystemStatus';
 
 type Workspace = 'dashboard' | 'live' | 'photo' | 'history' | 'analytics';
 type Props = {
@@ -62,6 +63,8 @@ export function DashboardHome({ sessions, onNavigate, onOpenSession }: Props) {
         <p>Review saved photo activity, category totals, and correction history over time.</p>
         <button className="outline-button" onClick={() => onNavigate('analytics')}>View analytics <ArrowRight size={15}/></button>
       </article>
+
+      <SpaisSystemStatus />
 
       <article className="dashboard-card dashboard-recent">
         <div className="dashboard-card-head">
