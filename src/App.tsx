@@ -37,10 +37,39 @@ export function App() {
   const [showPhotoDiagnosticConfidence, setShowPhotoDiagnosticConfidence] = useState(false);
   const [sessions, setSessions] = useState<CountSession[]>([]), [cameraOpen, setCameraOpen] = useState(false), [stream, setStream] = useState<MediaStream | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null), [editCategory, setEditCategory] = useState('object'), [editConfidence, setEditConfidence] = useState('');
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const editModalRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const totals = totalsByCategory(detections);
   useEffect(() => { listSessions().then(setSessions).catch(() => setMessage('Local history is unavailable in this browser.')); }, []);
-  useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); stream?.getTracks().forEach(t => t.stop()); }, [imageUrl, stream]);
+  useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
+  useEffect(() => () => { stream?.getTracks().forEach(t => t.stop()); }, [stream]);
   useEffect(() => { draw(); }, [image, detections, showPhotoDiagnosticConfidence]);
+  useEffect(() => {
+    if (!editModalOpen) {
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
+      return;
+    }
+    const modal = editModalRef.current;
+    const focusable = () => Array.from(modal?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? []);
+    focusable()[0]?.focus();
+    function handleModalKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setEditModalOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) { event.preventDefault(); return; }
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+    document.addEventListener('keydown', handleModalKeyDown);
+    return () => document.removeEventListener('keydown', handleModalKeyDown);
+  }, [editModalOpen]);
   useEffect(() => { if (cameraOpen && stream && cameraRef.current) { cameraRef.current.srcObject = stream; cameraRef.current.play().catch(() => notify('Camera preview could not start. Check browser permissions.', true)); } }, [cameraOpen, stream]);
   function notify(text: string, isError = false) { setMessage(text); setError(isError); }
   function loadFile(file?: File) {
@@ -70,37 +99,45 @@ export function App() {
   }
   async function analyze() {
     if (!image) return notify('Choose or capture a photo first.', true);
-    setBusy(true); notify('Loading the local model if neededâ€¦');
+    setBusy(true); notify('Loading the local model if needed…');
     try {
       const detector = await getDetector();
-      await detector.load(); setEngine('COCO-SSD Â· loaded'); notify('Analyzing image in this browserâ€¦');
+      await detector.load(); setEngine('COCO-SSD · loaded'); notify('Analyzing image in this browser…');
       let result = enhancedPhotoScan ? await detector.detectDetailed(image) : await detector.detect(image);
       const phrase = target.trim().toLowerCase();
       if (phrase && phrase !== 'all objects') {
         const aliases: Record<string,string[]> = { people:['person'], humans:['person'], bottles:['bottle'], cars:['car'], vehicles:['car','truck','bus','motorcycle','bicycle'], bikes:['bicycle','motorcycle'], motorcycles:['motorcycle'] };
         const terms = phrase.split(/[^a-z0-9]+/).filter(Boolean).flatMap(t => aliases[t] ?? [t]);
         result = result.filter(d => terms.some(t => d.category.toLowerCase().includes(t) || t.includes(d.category.toLowerCase())));
-        if (!result.length) notify(`No supported model detections matched â€œ${target}â€. This does not prove the objects are absent.`, true);
+        if (!result.length) notify(`No supported model detections matched “${target}”. This does not prove the objects are absent.`, true);
       }
       setDetections(result); if (result.length) notify(`${result.length} model detection${result.length === 1 ? '' : 's'} returned. Check for hidden, overlapping, missed or duplicate objects.`);
       await persist(result);
     } catch (e) { notify(e instanceof Error ? e.message : 'AI analysis failed.', true); setEngine('Unavailable'); }
     finally { setBusy(false); }
   }
-  async function persist(list = detections) {
+  async function persist(list = detections): Promise<boolean> {
     const session: CountSession = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), title: filename || 'Counting session', mode: 'photo', target: target || 'all objects', detections: list, totals: totalsByCategory(list) };
-    try { await saveSession(session); setSessions(await listSessions()); } catch { notify('Results are ready, but the browser could not save this session.'); }
+    try { await saveSession(session); setSessions(await listSessions()); return true; }
+    catch { notify('Results are ready in this view, but the browser could not save this session.', true); return false; }
   }
-  function addManual() { setEditingId(null); setEditCategory(target.trim() || 'object'); setEditConfidence(''); document.getElementById('edit-modal')?.classList.remove('hidden'); }
-  function editDetection(d: Detection) { setEditingId(d.id); setEditCategory(d.category); setEditConfidence(d.confidence == null ? '' : String(d.confidence)); document.getElementById('edit-modal')?.classList.remove('hidden'); }
+  function openEditModal() {
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setEditModalOpen(true);
+  }
+  function closeEditModal() { setEditModalOpen(false); }
+  function addManual() { setEditingId(null); setEditCategory(target.trim() || 'object'); setEditConfidence(''); openEditModal(); }
+  function editDetection(d: Detection) { setEditingId(d.id); setEditCategory(d.category); setEditConfidence(d.confidence == null ? '' : String(d.confidence)); openEditModal(); }
   async function saveEdit() {
-    if (!editCategory.trim()) return;
+    if (!editCategory.trim()) return notify('Enter a category before saving.', true);
+    if (editConfidence !== '' && (!Number.isFinite(Number(editConfidence)) || Number(editConfidence) < 0 || Number(editConfidence) > 1)) return notify('Confidence must be a number from 0 to 1.', true);
     let updated: Detection[];
     if (editingId) updated = detections.map(d => d.id === editingId ? { ...d, category: editCategory.trim().slice(0,100), confidence: editConfidence === '' ? undefined : Math.max(0, Math.min(1, Number(editConfidence))), source: 'manual' as const } : d);
     else updated = [...detections, { id: crypto.randomUUID(), category: editCategory.trim().slice(0,100), bbox: [image ? image.naturalWidth * .3 : 0, image ? image.naturalHeight * .3 : 0, image ? image.naturalWidth * .4 : 0, image ? image.naturalHeight * .4 : 0] as [number,number,number,number], source: 'manual' }];
-    setDetections(updated); document.getElementById('edit-modal')?.classList.add('hidden'); await persist(updated); notify('Correction saved. Category totals have been recalculated.');
+    setDetections(updated); closeEditModal();
+    if (await persist(updated)) notify('Correction saved. Category totals have been recalculated.');
   }
-  async function removeDetection(id: string) { const next = detections.filter(d => d.id !== id); setDetections(next); await persist(next); notify('Detection removed and totals recalculated.'); }
+  async function removeDetection(id: string) { const next = detections.filter(d => d.id !== id); setDetections(next); if (await persist(next)) notify('Detection removed and totals recalculated.'); }
   async function startCamera() {
     if (!navigator.mediaDevices?.getUserMedia) return notify('Camera requires HTTPS or localhost. You can upload a photo instead.', true);
     try { const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } } }); setStream(s); setCameraOpen(true); }
@@ -127,12 +164,12 @@ export function App() {
     <div style={{ display: activeWorkspace === 'dashboard' ? undefined : 'none' }}>
       <DashboardHome sessions={sessions} onNavigate={setActiveWorkspace} onOpenSession={(session) => { void openSession(session); setActiveWorkspace('photo'); }} />
     </div>
-    <section className="hero" style={{ display: activeWorkspace === 'live' ? undefined : 'none' }} id="top"><div className="eyebrow">VISUAL INTELLIGENCE Â· BUILT FOR THE REAL WORLD</div><h1>Count what<br/><em>you can see.</em></h1><p>Turn a photo into a reviewable count. AI suggests detections; you stay in control of the final numbers.</p><div className="feature-pills"><span><Smartphone size={14}/> Installable PWA</span><span><ShieldCheck size={14}/> Private by default</span><span><Wifi size={14}/> Local AI</span></div></section>
+    <section className="hero" style={{ display: activeWorkspace === 'live' ? undefined : 'none' }} id="top"><div className="eyebrow">VISUAL INTELLIGENCE · BUILT FOR THE REAL WORLD</div><h1>Count what<br/><em>you can see.</em></h1><p>Turn a photo into a reviewable count. AI suggests detections; you stay in control of the final numbers.</p><div className="feature-pills"><span><Smartphone size={14}/> Installable PWA</span><span><ShieldCheck size={14}/> Private by default</span><span><Wifi size={14}/> Local AI</span></div></section>
 <div style={{ display: activeWorkspace === 'live' ? 'block' : 'none' }}><LiveCounter /></div>
     <section className="workspace" style={{ display: activeWorkspace === 'photo' ? undefined : 'none' }}><div className="section-heading"><div><span className="step">01 / PHOTO COUNTER</span><h2>Start with an image</h2></div><span className="engine-state"><i className={engine.includes('loaded') ? 'ready' : ''}/>{engine}</span></div>
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={e => loadFile(e.target.files?.[0])}/>
       {!cameraOpen && <div className={`upload-panel ${image ? 'has-image' : ''}`} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();loadFile(e.dataTransfer.files[0]);}}>
-        {image ? <><canvas ref={canvasRef} className="result-canvas" aria-label="Image with numbered detection annotations"/><div className="image-footer"><span><Check size={15}/>{filename}</span><button className="subtle-button" onClick={()=>fileRef.current?.click()}>Change image</button></div></> : <><div className="upload-icon"><ImagePlus size={29}/></div><h3>Drop a photo here</h3><p>JPG, PNG, WebP or AVIF Â· up to 12 MB</p><button className="primary-button" onClick={()=>fileRef.current?.click()}><Upload size={17}/> Choose a photo</button><span className="or-label">or use your camera</span><button className="outline-button" onClick={startCamera}><Camera size={17}/> Open camera</button></>}
+        {image ? <><canvas ref={canvasRef} className="result-canvas" aria-label="Image with numbered detection annotations"/><div className="image-footer"><span><Check size={15}/>{filename}</span><button className="subtle-button" onClick={()=>fileRef.current?.click()}>Change image</button></div></> : <><div className="upload-icon"><ImagePlus size={29}/></div><h3>Drop a photo here</h3><p>JPG, PNG, WebP or AVIF · up to 12 MB</p><button className="primary-button" onClick={()=>fileRef.current?.click()}><Upload size={17}/> Choose a photo</button><span className="or-label">or use your camera</span><button className="outline-button" onClick={startCamera}><Camera size={17}/> Open camera</button></>}
       </div>}
       {cameraOpen && <div className="camera-wrap"><video ref={cameraRef} autoPlay playsInline muted/><div className="camera-actions"><button className="primary-button" onClick={capture}><Camera size={17}/> Capture photo</button><button className="outline-button" onClick={stopCamera}>Cancel</button></div></div>}
       <label className="field-label" htmlFor="target">WHAT SHOULD WE COUNT? <span>OPTIONAL</span></label><div className="target-row"><input id="target" value={target} onChange={e=>setTarget(e.target.value)} placeholder="e.g. bottles, people, parked cars"/><button className="primary-button analyze-button" onClick={analyze} disabled={!image || busy}>{busy ? <LoaderCircle className="spin" size={18}/> : <ScanSearch size={18}/>} {busy ? 'Analyzing' : 'Analyze photo'}</button></div>
@@ -146,7 +183,7 @@ export function App() {
       <div className="summary-grid"><div className="summary-card total-card"><span>Total detections</span><strong>{detections.length}</strong><small>AI + manual corrections</small></div><div className="summary-card"><span>Categories</span><strong>{Object.keys(totals).length}</strong><small>Detected class labels</small></div></div>
       <div className="category-panel"><h3>Category breakdown</h3>{Object.entries(totals).length ? Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([name,n])=><div className="category-row" key={name}><span>{name}</span><div className="bar"><i style={{width:`${n / Math.max(...Object.values(totals)) * 100}%`}}/></div><b>{n}</b></div>) : <p className="empty-copy">Run analysis to see category totals. Verify the image for missed or overlapping objects.</p>}</div>
       <div className="review-heading"><h3>Individual detections</h3><button className="small-action" onClick={addManual}><Plus size={15}/> Add manually</button></div>
-      {detections.length ? <div className="detection-list">{detections.map((d,i)=><div className="detection-row" key={d.id}><span className="detection-index">{String(i+1).padStart(2,'0')}</span><div className="detection-info"><b>{d.category}</b><small>{d.source === 'manual' ? 'Manual entry' : `${d.source === 'local' ? 'Local model' : 'Cloud model'} Â· ${d.confidence == null ? 'confidence unavailable' : `${Math.round(d.confidence*100)}% confidence`}`}</small></div><button className="icon-button" onClick={()=>editDetection(d)} aria-label={`Edit ${d.category}`}><span>Edit</span></button><button className="icon-button danger" onClick={()=>removeDetection(d.id)} aria-label={`Remove ${d.category}`}><X size={17}/></button></div>)}</div> : <div className="empty-results"><ScanSearch size={25}/><p>No detections yet</p><small>AI results will appear here after analysis.</small></div>}
+      {detections.length ? <div className="detection-list">{detections.map((d,i)=><div className="detection-row" key={d.id}><span className="detection-index">{String(i+1).padStart(2,'0')}</span><div className="detection-info"><b>{d.category}</b><small>{d.source === 'manual' ? 'Manual entry' : `${d.source === 'local' ? 'Local model' : 'Cloud model'} · ${d.confidence == null ? 'confidence unavailable' : `${Math.round(d.confidence*100)}% confidence`}`}</small></div><button className="icon-button" onClick={()=>editDetection(d)} aria-label={`Edit ${d.category}`}><span>Edit</span></button><button className="icon-button danger" onClick={()=>removeDetection(d.id)} aria-label={`Remove ${d.category}`}><X size={17}/></button></div>)}</div> : <div className="empty-results"><ScanSearch size={25}/><p>No detections yet</p><small>AI results will appear here after analysis.</small></div>}
       <div className="export-row"><button className="outline-button" disabled={!detections.length} onClick={exportCsv}><Download size={16}/> Export CSV</button><button className="outline-button" disabled={!image || !detections.length} onClick={exportPng}><ImagePlus size={16}/> Annotated PNG</button></div>
       <p className="accuracy-note"><CircleHelp size={16}/> Labels are AI predictions, not verified facts. Detection counts can be wrong when items overlap, are small, obscured, or outside the model's supported classes. Manual entries are labelled separately; review before relying on totals.</p>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#72817c', cursor: 'pointer' }}>
@@ -154,11 +191,11 @@ export function App() {
         Show model confidence on annotated photo (diagnostic only)
       </label>
     </section>
-    <section className="history-section" style={{ display: activeWorkspace === 'history' ? undefined : 'none' }}><div className="section-heading"><div><span className="step">03 / ON THIS DEVICE</span><h2>Recent sessions</h2></div><span className="local-badge">IndexedDB</span></div>{sessions.length ? sessions.slice(0,8).map(s=><div className="session-row" key={s.id}><button className="session-open" onClick={()=>openSession(s)}><span><b>{s.title}</b><small>{new Date(s.createdAt).toLocaleString()} Â· {s.target}</small></span><strong>{s.detections.length}<ChevronRight size={16}/></strong></button><button className="icon-button danger" aria-label="Delete session" onClick={()=>eraseSession(s.id)}><Trash2 size={15}/></button></div>) : <p className="empty-copy">Your saved sessions will appear here after you analyze or correct a count.</p>}</section>
+    <section className="history-section" style={{ display: activeWorkspace === 'history' ? undefined : 'none' }}><div className="section-heading"><div><span className="step">03 / ON THIS DEVICE</span><h2>Recent sessions</h2></div><span className="local-badge">IndexedDB</span></div>{sessions.length ? sessions.slice(0,8).map(s=><div className="session-row" key={s.id}><button className="session-open" onClick={()=>openSession(s)}><span><b>{s.title}</b><small>{new Date(s.createdAt).toLocaleString()} · {s.target}</small></span><strong>{s.detections.length}<ChevronRight size={16}/></strong></button><button className="icon-button danger" aria-label="Delete session" onClick={()=>eraseSession(s.id)}><Trash2 size={15}/></button></div>) : <p className="empty-copy">Your saved sessions will appear here after you analyze or correct a count.</p>}</section>
     <div style={{ display: activeWorkspace === 'analytics' ? undefined : 'none' }}><AnalyticsDashboard sessions={sessions} onOpenSession={openSession} /></div>
     <SpaisGovernanceWorkspace visible={activeWorkspace === 'governance'} />
     <SpaisOperationsWorkspace visible={activeWorkspace === 'operations'} />
     <footer><div className="footer-brand">SPAIS <span>INTELLIGENT OPERATIONS</span></div><p>SPAIS · Surveillance and operational intelligence, with human oversight.</p><small>Photos are processed locally by default. This build does not identify people or perform biometric matching.</small></footer>
-    <div id="edit-modal" className="modal hidden" role="dialog" aria-modal="true" aria-labelledby="edit-heading"><div className="modal-card"><div className="modal-head"><h2 id="edit-heading">Correct detection</h2><button className="icon-button" onClick={()=>document.getElementById('edit-modal')?.classList.add('hidden')} aria-label="Close"><X size={18}/></button></div><label className="field-label" htmlFor="edit-category">CATEGORY</label><input id="edit-category" value={editCategory} onChange={e=>setEditCategory(e.target.value)} maxLength={100}/><label className="field-label" htmlFor="edit-confidence">CONFIDENCE (0â€“1, OPTIONAL)</label><input id="edit-confidence" type="number" min="0" max="1" step="0.01" value={editConfidence} onChange={e=>setEditConfidence(e.target.value)}/><div className="modal-actions"><button className="outline-button" onClick={()=>document.getElementById('edit-modal')?.classList.add('hidden')}>Cancel</button><button className="primary-button" onClick={saveEdit}><Check size={16}/> Save correction</button></div></div></div>
+    <div id="edit-modal" ref={editModalRef} className={editModalOpen ? 'modal' : 'modal hidden'} role="dialog" aria-modal="true" aria-labelledby="edit-heading"><div className="modal-card"><div className="modal-head"><h2 id="edit-heading">Correct detection</h2><button className="icon-button" onClick={closeEditModal} aria-label="Close"><X size={18}/></button></div><label className="field-label" htmlFor="edit-category">CATEGORY</label><input id="edit-category" value={editCategory} onChange={e=>setEditCategory(e.target.value)} maxLength={100}/><label className="field-label" htmlFor="edit-confidence">CONFIDENCE (0–1, OPTIONAL)</label><input id="edit-confidence" type="number" min="0" max="1" step="0.01" value={editConfidence} onChange={e=>setEditConfidence(e.target.value)}/><div className="modal-actions"><button className="outline-button" onClick={closeEditModal}>Cancel</button><button className="primary-button" onClick={saveEdit}><Check size={16}/> Save correction</button></div></div></div>
   </main>;
 }
