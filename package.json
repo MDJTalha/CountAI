@@ -13,6 +13,8 @@
     "test:camera-health-history": "node --test tests/cameraHealthHistory.test.mjs",
     "server": "node server/index.mjs",
     "test:server": "node --test tests/server.test.mjs",
+    "test:security-controls": "node --test tests/securityControls.test.mjs",
+    "test:security-controls-api": "node --test tests/securityControlsApi.test.mjs",
     "test:pwa-build": "node --test tests/pwaBuild.test.mjs",
     "test:operational-events": "node --test tests/operationalEvents.test.mjs",
     "test:operational-event-store": "node --test tests/operationalEventsStore.test.mjs",
