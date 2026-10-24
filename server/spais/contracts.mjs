@@ -14,6 +14,7 @@ export const SPAIS_RESOURCE_TYPES = Object.freeze([
   "live_session",
   "incident",
   "sop_version",
+  "model_candidate",
   "model_release",
   "audit_event"
 ]);
@@ -59,7 +60,8 @@ export function getSpaisContractManifest({ authenticationConfigured = false, ten
         : "Tenant-scoped resource routes remain disabled until trusted authentication and persistent storage are configured.",
       "Browser-local sessions are not server-side tenant records.",
       "Recorder health requires recorder-side evidence; browser camera status is not recording assurance.",
-      "Report-based recording assessment computes reported coverage ratios and window continuity from signed connector reports; it is not independent proof of recording."
+      "Report-based recording assessment computes reported coverage ratios and window continuity from signed connector reports; it is not independent proof of recording.",
+      "Learning candidate routes register and review metadata for offline evaluation only; they do not train, evaluate, or promote production models."
     ]
   });
 }
