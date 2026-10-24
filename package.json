@@ -32,7 +32,6 @@
     "test:incidents-api": "node --test tests/incidentsApi.test.mjs",
     "test:spais-sops-api": "node --test tests/spaisSopsApi.test.mjs",
     "test:learning-candidates-api": "node --test tests/learningCandidatesApi.test.mjs",
-    "test:learning-evaluations-api": "node --test tests/learningEvaluationsApi.test.mjs",
     "test:learning-evaluations-api": "node --test tests/learningEvaluationsApi.test.mjs"
   },
   "dependencies": {
