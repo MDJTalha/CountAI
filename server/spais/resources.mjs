@@ -24,6 +24,29 @@ function containsSensitiveField(value) {
   );
 }
 
+function normalizeRsaPublicKey(publicKeyJwk) {
+  if (!publicKeyJwk || typeof publicKeyJwk !== 'object' || Array.isArray(publicKeyJwk)) {
+    throw invalid('invalid_public_key');
+  }
+  let serialized;
+  try { serialized = JSON.stringify(publicKeyJwk); }
+  catch { throw invalid('invalid_public_key'); }
+  const privateParameters = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth'];
+  if (Buffer.byteLength(serialized, 'utf8') > 4096 || publicKeyJwk.kty !== 'RSA' ||
+      typeof publicKeyJwk.n !== 'string' || typeof publicKeyJwk.e !== 'string' ||
+      privateParameters.some(parameter => publicKeyJwk[parameter] !== undefined) ||
+      Buffer.from(publicKeyJwk.n, 'base64url').length < 256) {
+    throw invalid('invalid_public_key');
+  }
+  try { createPublicKey({ key: publicKeyJwk, format: 'jwk' }); }
+  catch { throw invalid('invalid_public_key'); }
+  const normalized = { kty: 'RSA', n: publicKeyJwk.n, e: publicKeyJwk.e };
+  const keyThumbprint = createHash('sha256')
+    .update(JSON.stringify({ e: normalized.e, kty: normalized.kty, n: normalized.n }))
+    .digest('base64url');
+  return { publicKeyJwk: normalized, keyThumbprint };
+}
+
 function validateMetadata(metadata, errors) {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     errors.push('metadata_must_be_object');
