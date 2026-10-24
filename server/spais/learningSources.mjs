@@ -239,6 +239,12 @@ export function createSqliteLearningSourceStore({
         if (result.mediaCleanupPending) mediaCleanupPending += 1;
       }
       return { deleted, mediaCleanupPending, disabled: false, retentionDays, cutoff };
+    },
+    async close() {
+      if (!databasePromise) return;
+      const database = await databasePromise;
+      database.close();
+      databasePromise = undefined;
     }
   };
 }
