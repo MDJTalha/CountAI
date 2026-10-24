@@ -348,6 +348,156 @@ export function createSqliteSpaisResourceStore(databasePath = process.env.SPAIS_
         details: JSON.parse(row.details_json)
       }));
     },
+    async createConnectorEnrollmentChallenge({ organizationId, siteId, connectorId, actorId, now = new Date(), ttlSeconds = 600 }) {
+      if (!isResourceId(organizationId) || !isResourceId(siteId) ||
+          !isResourceId(connectorId) || !isResourceId(actorId)) throw invalid('invalid_trusted_scope');
+      const database = await getDatabase();
+      const connector = database.prepare(`
+        SELECT * FROM spais_resources
+        WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
+      `).get(organizationId, connectorId, siteId);
+      if (!connector || connector.status !== 'pending') throw invalid('connector_not_enrollable');
+
+      const enrollmentId = randomUUID();
+      const challenge = randomBytes(32).toString('base64url');
+      const challengeHash = createHash('sha256').update(challenge).digest('hex');
+      const createdAt = now.toISOString();
+      const expiresAt = new Date(now.getTime() + Math.max(60, Math.min(900, ttlSeconds)) * 1000).toISOString();
+      database.exec('BEGIN IMMEDIATE;');
+      try {
+        database.prepare(`
+          INSERT INTO spais_connector_enrollments
+            (enrollment_id, organization_id, site_id, connector_id, challenge_hash, status, expires_at, created_by, created_at)
+          VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+        `).run(enrollmentId, organizationId, siteId, connectorId, challengeHash, expiresAt, actorId, createdAt);
+        writeAudit(database, {
+          organizationId, siteId, actorId, action: 'connector.enrollment_challenge_created',
+          resourceType: 'connector', resourceId: connectorId, occurredAt: createdAt,
+          details: { enrollmentId, expiresAt }
+        });
+        database.exec('COMMIT;');
+      } catch (error) {
+        try { database.exec('ROLLBACK;'); } catch {}
+        throw error;
+      }
+      // The raw challenge is returned once; only its SHA-256 hash is persisted.
+      return { enrollmentId, challenge, connectorId, siteId, expiresAt };
+    },
+    async completeConnectorEnrollment({ enrollmentId, challenge, publicKeyJwk, signature, now = new Date() }) {
+      if (!isResourceId(enrollmentId) || typeof challenge !== 'string' ||
+          !/^[A-Za-z0-9_-]{40,64}$/.test(challenge) ||
+          typeof signature !== 'string' || signature.length > 2048 ||
+          !publicKeyJwk || typeof publicKeyJwk !== 'object' || Array.isArray(publicKeyJwk)) {
+        throw invalid('invalid_enrollment_proof');
+      }
+      let serializedKey;
+      try { serializedKey = JSON.stringify(publicKeyJwk); }
+      catch { throw invalid('invalid_public_key'); }
+      if (Buffer.byteLength(serializedKey, 'utf8') > 4096) throw invalid('invalid_public_key');
+      const privateParameters = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth'];
+      if (publicKeyJwk.kty !== 'RSA' || typeof publicKeyJwk.n !== 'string' ||
+          typeof publicKeyJwk.e !== 'string' ||
+          privateParameters.some(parameter => publicKeyJwk[parameter] !== undefined) ||
+          Buffer.from(publicKeyJwk.n, 'base64url').length < 256) {
+        throw invalid('invalid_public_key');
+      }
+      let publicKey;
+      try { publicKey = createPublicKey({ key: publicKeyJwk, format: 'jwk' }); }
+      catch { throw invalid('invalid_public_key'); }
+      const database = await getDatabase();
+      let expired = false;
+      let result;
+      database.exec('BEGIN IMMEDIATE;');
+      try {
+        const enrollment = database.prepare(`
+          SELECT * FROM spais_connector_enrollments WHERE enrollment_id = ?
+        `).get(enrollmentId);
+        if (!enrollment) throw invalid('enrollment_not_found');
+        if (enrollment.status !== 'pending') throw invalid('enrollment_not_pending');
+        if (Date.parse(enrollment.expires_at) <= now.getTime()) {
+          database.prepare(`
+            UPDATE spais_connector_enrollments SET status = 'expired' WHERE enrollment_id = ?
+          `).run(enrollmentId);
+          writeAudit(database, {
+            organizationId: enrollment.organization_id, siteId: enrollment.site_id,
+            actorId: enrollment.created_by, action: 'connector.enrollment_expired',
+            resourceType: 'connector', resourceId: enrollment.connector_id,
+            occurredAt: now.toISOString(), details: { enrollmentId }
+          });
+          database.exec('COMMIT;');
+          expired = true;
+        } else {
+          const suppliedHash = createHash('sha256').update(challenge).digest();
+          const storedHash = Buffer.from(enrollment.challenge_hash, 'hex');
+          if (storedHash.length !== suppliedHash.length || !timingSafeEqual(storedHash, suppliedHash)) {
+            throw invalid('invalid_enrollment_proof');
+          }
+          const validSignature = verifySignature(
+            'RSA-SHA256',
+            Buffer.from(enrollmentId + '.' + challenge),
+            publicKey,
+            Buffer.from(signature, 'base64url')
+          );
+          if (!validSignature) throw invalid('invalid_enrollment_proof');
+
+          const connector = database.prepare(`
+            SELECT * FROM spais_resources
+            WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
+          `).get(enrollment.organization_id, enrollment.connector_id, enrollment.site_id);
+          if (!connector || connector.status !== 'pending') throw invalid('connector_not_enrollable');
+
+          const keyThumbprint = createHash('sha256')
+            .update(JSON.stringify({ e: publicKeyJwk.e, kty: 'RSA', n: publicKeyJwk.n }))
+            .digest('base64url');
+          const completedAt = now.toISOString();
+          database.prepare(`
+            UPDATE spais_connector_enrollments
+            SET status = 'completed', completed_at = ?, public_key_jwk = ?, key_thumbprint = ?
+            WHERE enrollment_id = ?
+          `).run(completedAt, JSON.stringify({ kty: 'RSA', n: publicKeyJwk.n, e: publicKeyJwk.e }), keyThumbprint, enrollmentId);
+          database.prepare(`
+            UPDATE spais_resources SET status = 'enrolled', updated_at = ?
+            WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ? AND site_id = ?
+          `).run(completedAt, enrollment.organization_id, enrollment.connector_id, enrollment.site_id);
+          const updatedRow = database.prepare(`
+            SELECT * FROM spais_resources
+            WHERE organization_id = ? AND resource_type = 'connector' AND resource_id = ?
+          `).get(enrollment.organization_id, enrollment.connector_id);
+          const resource = toResource(updatedRow);
+          writeAudit(database, {
+            organizationId: enrollment.organization_id, siteId: enrollment.site_id,
+            actorId: enrollment.created_by, action: 'connector.enrollment_completed',
+            resourceType: 'connector', resourceId: enrollment.connector_id,
+            occurredAt: completedAt, details: { enrollmentId, keyThumbprint, after: resource }
+          });
+          database.exec('COMMIT;');
+          result = { enrollmentId, connector: resource, keyThumbprint, enrolledAt: completedAt };
+        }
+      } catch (error) {
+        try { database.exec('ROLLBACK;'); } catch {}
+        throw error;
+      }
+      if (expired) throw invalid('enrollment_expired');
+      return result;
+    },
+    async getConnectorIdentity({ organizationId, siteId, connectorId } = {}) {
+      if (!isResourceId(organizationId) || !isResourceId(siteId) || !isResourceId(connectorId)) {
+        throw invalid('invalid_resource_query');
+      }
+      const database = await getDatabase();
+      const row = database.prepare(`
+        SELECT public_key_jwk, key_thumbprint, completed_at
+        FROM spais_connector_enrollments
+        WHERE organization_id = ? AND site_id = ? AND connector_id = ? AND status = 'completed'
+        ORDER BY completed_at DESC LIMIT 1
+      `).get(organizationId, siteId, connectorId);
+      if (!row) return null;
+      return {
+        publicKeyJwk: JSON.parse(row.public_key_jwk),
+        keyThumbprint: row.key_thumbprint,
+        enrolledAt: row.completed_at
+      };
+    },
     async close() {
       if (!databasePromise) return;
       const database = await databasePromise;
