@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 import { AlertCircle, CheckCircle2, ClipboardCheck, RefreshCw, ShieldCheck } from 'lucide-react';
 
 type Incident = {
@@ -81,7 +82,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
       setIncidents([]); setSops([]);
     } finally { setBusy(false); }
   }
-  async function submitIncident(event: React.FormEvent<HTMLFormElement>) {
+  async function submitIncident(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true); setIsError(false);
     try {
@@ -110,7 +111,7 @@ export function SpaisGovernanceWorkspace({ visible }: Props) {
     } catch (error) { setIsError(true); setMessage(error instanceof Error ? error.message : 'Could not update incident.'); }
     finally { setBusy(false); }
   }
-  async function submitSop(event: React.FormEvent<HTMLFormElement>) {
+  async function submitSop(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true); setIsError(false);
     try {
