@@ -112,5 +112,18 @@ test('built application is served with basic security headers', async () => {
   assert.equal(response.headers.get('x-frame-options'), 'DENY');
   assert.equal(response.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
   assert.equal(response.headers.get('permissions-policy'), 'camera=(self), microphone=(), geolocation=()');
+  assert.equal(response.headers.get('cache-control'), 'no-cache');
   assert.match(await response.text(), /<html|<!doctype html/i);
+});
+
+test('content-hashed production assets receive immutable caching', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const assetDirectory = new URL('../dist/assets/', import.meta.url);
+  const assets = await readdir(assetDirectory);
+  const hashedAsset = assets.find(name => /-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|svg)$/i.test(name));
+  assert.ok(hashedAsset, 'production build should contain a content-hashed asset');
+
+  const response = await fetch(`${baseUrl}/assets/${encodeURIComponent(hashedAsset)}`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
 });

@@ -58,7 +58,7 @@ function staticCacheControl(file) {
   const name = file.slice(file.lastIndexOf('/') + 1);
   // Vite's content-hashed assets are immutable; entry HTML, service worker,
   // manifest and unhashed public files must revalidate after a deployment.
-  return /[-.][A-Za-z0-9_-]{8,}\\.(?:js|css|woff2?|png|svg)$/i.test(name)
+  return /[-.][A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|svg)$/i.test(name)
     ? 'public, max-age=31536000, immutable'
     : 'no-cache';
 }
