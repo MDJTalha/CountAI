@@ -11,6 +11,12 @@ test('diagnostic overlay can show model confidence without implying certainty', 
   assert.equal(formatDetectionOverlayLabel('person', 0.89, true), 'AI prediction · person · 89%');
 });
 
+test('overlay explicitly distinguishes a detection from a recorded line crossing', () => {
+  assert.equal(formatDetectionOverlayLabel('person', 0.89, false, false), 'AI prediction · person');
+  assert.equal(formatDetectionOverlayLabel('person', 0.89, false, true), 'AI prediction · person · line crossing recorded');
+  assert.equal(formatDetectionOverlayLabel('person', 0.89, true, true), 'AI prediction · person · line crossing recorded · 89%');
+});
+
 test('missing or invalid confidence is omitted even in diagnostic mode', () => {
   assert.equal(formatDetectionOverlayLabel('bottle', undefined, true), 'AI prediction · bottle');
   assert.equal(formatDetectionOverlayLabel('bottle', Number.NaN, true), 'AI prediction · bottle');
