@@ -74,6 +74,8 @@ A reproducible crossing-event metric harness is available in [the counting bench
 
 ## Deployment
 
+The `Publish CountAI container` workflow can publish reviewed `v*` releases to GitHub Container Registry after the full regression suite passes. See the [deployment runbook](docs/DEPLOYMENT_RUNBOOK.md) for pinning a release image and rolling back.
+
 A hardened single-host Docker/Compose deployment package and operator runbook are available in [Production Deployment Runbook](docs/DEPLOYMENT_RUNBOOK.md). Start with `.env.example`, replace all identity-provider placeholders, and keep the service behind a managed HTTPS gateway. The Compose configuration binds the application to loopback and persists SQLite and backups in separate volumes. A packaged container is not a live deployment or proof of camera/NVR integration; follow the runbook and acceptance gates before production sign-off.
 
 ## Backup and scheduled maintenance

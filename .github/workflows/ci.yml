@@ -51,6 +51,15 @@ jobs:
       - name: Verify PWA service worker was generated
         run: test -f dist/sw.js
 
+      - name: Validate local and registry Compose configurations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          trap 'rm -f .env' EXIT
+          docker compose config --quiet
+          COUNTAI_IMAGE=ghcr.io/mdjtalha/countai:v1.2.3 COUNTAI_PULL_POLICY=always docker compose config --quiet
+
       - name: Build production container
         run: docker build --pull -t countai:ci .
 

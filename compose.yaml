@@ -3,7 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: countai:local
+    image: ${COUNTAI_IMAGE:-countai:local}
+    pull_policy: ${COUNTAI_PULL_POLICY:-build}
     container_name: countai
     restart: unless-stopped
     init: true
