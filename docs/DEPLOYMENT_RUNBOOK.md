@@ -41,6 +41,19 @@ Do not deploy using the example identity-provider values. Replace every `example
 7. Run the tenant/site authorization matrix with real, short-lived test identities: missing/expired token, wrong organization, wrong site, insufficient action, revoked connector and authorized same-scope request. Verify sensitive values never appear in responses or logs.
 8. Capture the commit SHA, image ID, environment (without secrets), test time, tester and evidence links in the acceptance matrix.
 
+## Deploy a published container image
+
+The repository's `Publish CountAI container` workflow publishes versioned images to GitHub Container Registry only for `v*` tags, and can be manually run from `main`. It runs `npm ci` and the full regression suite before publishing. For a release, create a reviewed version tag on the approved commit and wait for the workflow to succeed.
+
+On the deployment host, configure the `.env` file with the exact published version, not a floating tag:
+
+```sh
+COUNTAI_IMAGE=ghcr.io/mdjtalha/countai:vX.Y.Z
+COUNTAI_PULL_POLICY=always
+```
+
+Use the actual tag that was published. If the package is private, authenticate the host to GHCR using a least-privilege read-only package token stored outside source control. Then run `docker compose pull countai`, `docker compose up -d --force-recreate`, and the health/API smoke tests above. Record the image digest and keep the previous known-good image tag for rollback. Do not create a release tag until the exact commit has passed CI and release review.
+
 ## Upgrade and rollback
 
 Before every upgrade, record the current image ID and commit SHA, run regression tests, and create a verified backup. Build the new image, then recreate the service:
