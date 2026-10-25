@@ -68,6 +68,10 @@ npm run build
 npm run server
 ```
 
+## Acceptance evidence
+
+Use [the system acceptance evidence matrix](docs/ACCEPTANCE_EVIDENCE_MATRIX.md) to record deployment-specific proof for browser acceptance, tenant/site isolation, real camera/NVR integration, counting accuracy, backup/restore, and governed learning. A green CI run is not a substitute for these environment-specific gates.
+
 ## Validation
 
 ```bash
