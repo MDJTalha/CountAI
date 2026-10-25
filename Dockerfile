@@ -16,6 +16,7 @@ COPY --from=build --chown=node:node /app/server ./server
 COPY --from=build --chown=node:node /app/scripts ./scripts
 COPY --from=build --chown=node:node /app/package.json ./package.json
 RUN mkdir -p /var/lib/countai /var/backups/countai /var/lib/countai/learning-media \
+ && chmod 700 /var/lib/countai /var/backups/countai /var/lib/countai/learning-media \
  && chown -R node:node /var/lib/countai /var/backups/countai /app
 USER node
 EXPOSE 8787
