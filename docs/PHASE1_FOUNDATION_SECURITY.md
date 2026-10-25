@@ -55,7 +55,7 @@ Required policy before production:
 
 - SQLite is a single-host persistence option, not a shared database for horizontally scaled replicas.
 - Set `SPAIS_EVENTS_DB_PATH` to a persistent, access-controlled volume and ensure the process account has only the required permissions.
-- Use `npm run maintenance:backup-sqlite` with `SPAIS_EVENTS_DB_PATH` and `COUNTAI_BACKUP_DIR` configured to create a consistent SQLite snapshot via `VACUUM INTO`. The command verifies the backup with `PRAGMA integrity_check`, restricts the backup file to the service account by default, and emits a machine-readable result. Schedule it, copy the resulting backup to independently protected storage, and monitor failures; a local backup alone is not disaster recovery. Never copy an active SQLite database file without accounting for WAL state.
+- Use `npm run maintenance:backup-sqlite` with `SPAIS_EVENTS_DB_PATH` and `COUNTAI_BACKUP_DIR` configured to create a consistent SQLite snapshot via `VACUUM INTO`. The command verifies the backup with `PRAGMA integrity_check`, restricts the backup file to the service account by default, and emits a machine-readable result. Schedule it, copy the resulting backup to independently protected storage, and monitor failures; a local backup alone is not disaster recovery. Never copy an active SQLite database file without accounting for WAL state. After creating or retrieving a backup, run `COUNTAI_BACKUP_VERIFY_PATH=/path/to/backup.sqlite npm run maintenance:verify-sqlite-restore` (PowerShell: `$env:COUNTAI_BACKUP_VERIFY_PATH='C:\\path\\to\\backup.sqlite'; npm run maintenance:verify-sqlite-restore`) to copy it into an isolated temporary location, open the copy read-only, and verify both `integrity_check` and `quick_check`. This is a non-destructive restore drill to a temporary path; it does not replace a full application restore rehearsal into a clean, isolated environment.
 - Define and test RPO/RTO, encryption at rest, backup retention, restore drills, disk-capacity alerts and recovery after interrupted writes before production approval.
 - For multi-instance deployment, use a shared transactional database and a separately designed migration/backup strategy.
 
@@ -80,7 +80,9 @@ The CI pipeline must run all required test suites, including the security-contro
 - [x] Implement and test authorized site-scoped learning-source deletion and an opt-in retention-expiry maintenance command.\n- [ ] Configure and monitor the scheduled retention task with a customer-approved retention period.
 - [ ] Configure production OIDC, secret rotation/revocation and trusted TLS gateway.
 - [x] Add a consistent SQLite snapshot command with integrity verification and restrictive file permissions.
-- [ ] Schedule and monitor backups, store a protected off-host copy, run a restore drill, and document verified RPO/RTO; or select a supported shared database.
+- [x] Add a non-destructive temporary restore-drill command with integrity/quick-check validation and regression tests.
+- [ ] Schedule and monitor backups and store a protected off-host copy.
+- [ ] Perform a full application restore drill in an isolated environment and document verified RPO/RTO; the temporary SQLite verification command is only a preliminary integrity gate.
 - [ ] Run an independent security review and deployment-level load/recovery tests.
 - [ ] Verify all open PRs against current main, merge only after review/CI, then repeat validation on main.
 
