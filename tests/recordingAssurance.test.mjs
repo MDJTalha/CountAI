@@ -67,6 +67,10 @@ test('gaps and overlapping report windows cannot be labelled complete', () => {
   });
   assert.equal(overlap.windowContinuity, 'overlaps_detected');
   assert.equal(overlap.assessment, 'incomplete_report_windows');
+  assert.equal(overlap.expectedReportedSeconds, null);
+  assert.equal(overlap.recordedReportedSeconds, null);
+  assert.equal(overlap.reportedGapSeconds, null);
+  assert.equal(overlap.reportedCoveragePercent, null);
 });
 
 
