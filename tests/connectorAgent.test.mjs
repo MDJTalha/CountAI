@@ -102,6 +102,18 @@ test('edge agent rejects unsafe endpoint URLs and recorder payloads with extra f
     privateKey: pair.privateKey
   }), error => error.code === 'https_required');
 
+  await assert.rejects(() => runConnectorOnce({
+    serverUrl: 'https://spais.example.test#',
+    organizationId: 'org-1', siteId: 'site-1', connectorId: 'connector-1',
+    privateKey: pair.privateKey
+  }), error => error.code === 'unsafe_endpoint_url');
+
+  await assert.rejects(() => runConnectorOnce({
+    serverUrl: 'https://spais.example.test',
+    organizationId: 'org-1', siteId: 'site-1', connectorId: 'connector-1',
+    privateKey: pair.privateKey, recorderStatusUrl: 'https://recorder.example.test/status#'
+  }), error => error.code === 'unsafe_endpoint_url');
+
   const fetchImpl = async (url) => {
     if (String(url) === 'https://recorder.example.test/status') {
       return { ok: true, status: 200, text: async () => JSON.stringify({ frames: ['not allowed'] }) };
