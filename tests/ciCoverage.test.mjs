@@ -12,7 +12,7 @@ test('every regression suite in npm test is also run by required GitHub Actions 
   const localSuites = [...testCommand.matchAll(/npm run (test:[a-z0-9:-]+)/g)].map(match => match[1]);
   assert.ok(localSuites.length > 0, 'npm test must enumerate regression suites');
 
-  const loop = workflow.match(/for script in ([\\s\\S]*?); do/);
+  const loop = workflow.match(/for script in ([\s\S]*?); do/);
   assert.ok(loop, 'CI workflow must declare the required regression suite loop');
   const ciSuites = new Set(loop[1].match(/test:[a-z0-9:-]+/g) ?? []);
 
