@@ -75,6 +75,6 @@ test('CCTV-first console keeps keyboard focus visible and respects reduced-motio
   assert.match(styles, /:focus-visible/);
   assert.match(styles, /outline: 3px solid/);
   assert.match(styles, /prefers-reduced-motion: reduce/);
-  assert.match(styles, /animation-duration: 0\\.01ms/);
-  assert.match(styles, /transition-duration: 0\\.01ms/);
+  assert.match(styles, /animation-duration: 0\.01ms/);
+  assert.match(styles, /transition-duration: 0\.01ms/);
 });
