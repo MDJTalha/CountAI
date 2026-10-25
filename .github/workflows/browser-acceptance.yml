@@ -2,6 +2,7 @@ name: CountAI Browser Acceptance
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
