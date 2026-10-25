@@ -68,19 +68,22 @@ export function evaluateRecordingCoverageReports({
   // Individually safe integers can still overflow when summed across many reports.
   const aggregateMetricsSafe = Number.isSafeInteger(expectedTotal) &&
     Number.isSafeInteger(recordedTotal) && recordedTotal <= expectedTotal;
-  const expectedReportedSeconds = aggregateMetricsSafe ? expectedTotal : null;
-  const recordedReportedSeconds = aggregateMetricsSafe ? recordedTotal : null;
-  const reportedGapSeconds = aggregateMetricsSafe ? Math.max(0, expectedTotal - recordedTotal) : null;
-  const reportedCoveragePercent = aggregateMetricsSafe && expectedTotal > 0
-    ? Math.round((recordedTotal / expectedTotal) * 10000) / 100
-    : null;
-
   let hasGap = false;
   let hasOverlap = false;
   for (let index = 1; index < full.length; index += 1) {
     if (full[index].reportStart > full[index - 1].reportEnd) hasGap = true;
     if (full[index].reportStart < full[index - 1].reportEnd) hasOverlap = true;
   }
+  // Overlapping windows can double-count the same time interval. Keep the
+  // assessment inconclusive and suppress aggregate metrics instead of showing
+  // totals or percentages that appear more precise than the source evidence.
+  const aggregateMetricsUsable = aggregateMetricsSafe && !hasOverlap;
+  const expectedReportedSeconds = aggregateMetricsUsable ? expectedTotal : null;
+  const recordedReportedSeconds = aggregateMetricsUsable ? recordedTotal : null;
+  const reportedGapSeconds = aggregateMetricsUsable ? Math.max(0, expectedTotal - recordedTotal) : null;
+  const reportedCoveragePercent = aggregateMetricsUsable && expectedTotal > 0
+    ? Math.round((recordedTotal / expectedTotal) * 10000) / 100
+    : null;
   const boundaryGap = full.length > 0 && (full[0].reportStart > start || full[full.length - 1].reportEnd < end);
   let windowContinuity = 'complete';
   if (reportsTruncated) windowContinuity = 'report_limit_reached';
