@@ -78,3 +78,10 @@ test('CCTV-first console keeps keyboard focus visible and respects reduced-motio
   assert.match(styles, /animation-duration: 0\.01ms/);
   assert.match(styles, /transition-duration: 0\.01ms/);
 });
+
+
+test('keyboard users can skip primary navigation to the main workspace', () => {
+  assert.match(app, /className="cctv-skip-link" href="#main-content">Skip to main content/);
+  assert.match(app, /<main id="main-content" className="cctv-main" tabIndex=\{-1\}>/);
+  assert.match(styles, /\.cctv-skip-link:focus/);
+});
