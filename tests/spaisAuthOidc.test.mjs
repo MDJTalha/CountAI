@@ -91,6 +91,18 @@ test('OIDC verifier rejects non-HTTPS remote JWKS URLs and token-supplied key UR
   });
   assert.deepEqual(insecureUrl, { authenticated: false, reason: 'invalid_jwks_url' });
 
+  for (const unsafeUrl of [
+    'https://user:password@identity.example.test/jwks',
+    'https://identity.example.test/jwks?tenant=unexpected',
+    'https://identity.example.test/jwks#alternate'
+  ]) {
+    clearSpaisJwksCacheForTests();
+    const result = await verifySpaisBearerTokenAsync(`Bearer ${makeToken()}`, {
+      jwksUrl: unsafeUrl, issuer, audience, fetcher: mockFetcher([jwk])
+    });
+    assert.deepEqual(result, { authenticated: false, reason: 'invalid_jwks_url' });
+  }
+
   const tokenSuppliedUrl = await verifySpaisBearerTokenAsync(`Bearer ${makeToken({ headerExtra: { jku: 'https://attacker.example/jwks' } })}`, {
     jwksUrl, issuer, audience, fetcher: mockFetcher([jwk])
   });
