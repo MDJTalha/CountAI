@@ -85,6 +85,24 @@ test('impossible signed counters are marked inconsistent and cannot inflate repo
   }
 });
 
+test('aggregate counter overflow is inconclusive instead of producing imprecise coverage', () => {
+  const huge = Number.MAX_SAFE_INTEGER;
+  const assessment = evaluateRecordingCoverageReports({
+    organizationId: 'org-1', siteId: 'site-1', cameraId: 'camera-1',
+    reports: [
+      report(windowStart, '2026-10-24T00:30:00.000Z', huge, huge),
+      report('2026-10-24T00:30:00.000Z', windowEnd, huge, huge)
+    ], windowStart, windowEnd, now
+  });
+  assert.equal(assessment.aggregateMetricsSafe, false);
+  assert.equal(assessment.windowContinuity, 'inconsistent_report_metrics');
+  assert.equal(assessment.assessment, 'inconsistent_report_data');
+  assert.equal(assessment.expectedReportedSeconds, null);
+  assert.equal(assessment.recordedReportedSeconds, null);
+  assert.equal(assessment.reportedGapSeconds, null);
+  assert.equal(assessment.reportedCoveragePercent, null);
+});
+
 test('missing or truncated reports remain inconclusive', () => {
   const none = evaluateRecordingCoverageReports({
     organizationId: 'org-1', siteId: 'site-1', cameraId: 'camera-1',
