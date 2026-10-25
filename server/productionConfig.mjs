@@ -40,7 +40,7 @@ export function validateProductionConfig(env = process.env) {
     try {
       const url = new URL(env.SPAIS_AUTH_JWKS_URL);
       if (url.protocol !== 'https:') errors.push(fail('jwks_https_required', 'Production JWKS URL must use HTTPS.'));
-      if (url.username || url.password || url.search || url.hash) {
+      if (url.username || url.password || url.search || url.hash || env.SPAIS_AUTH_JWKS_URL.includes('?') || env.SPAIS_AUTH_JWKS_URL.includes('#')) {
         errors.push(fail('jwks_url_components_forbidden', 'Production JWKS URL must not contain user information, query parameters, or a fragment.'));
       }
     } catch {
