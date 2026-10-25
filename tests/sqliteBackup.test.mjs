@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -30,9 +30,37 @@ test('SQLite backup creates a consistent, integrity-checked, private snapshot', 
     const info = await stat(result.backupPath);
     if (process.platform !== 'win32') {
       assert.ok((info.mode & 0o077) === 0, 'backup file must not be accessible to group/other users');
+      const directoryInfo = await stat(backupDirectory);
+      assert.ok((directoryInfo.mode & 0o077) === 0, 'backup directory must not be accessible to group/other users');
     }
   } finally {
     try { backup?.close(); } catch {}
+    source.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('SQLite backup refuses an existing backup directory with unsafe permissions', async () => {
+  if (process.platform === 'win32') return;
+  const dir = await mkdtemp(join(tmpdir(), 'countai-sqlite-backup-permissions-'));
+  const sourcePath = join(dir, 'events.sqlite');
+  const backupDirectory = join(dir, 'backups');
+  const source = new DatabaseSync(sourcePath);
+  source.exec('CREATE TABLE audit_events (id INTEGER PRIMARY KEY, action TEXT NOT NULL);');
+  await mkdir(backupDirectory, { mode: 0o700 });
+  await chmod(backupDirectory, 0o755);
+
+  try {
+    await assert.rejects(
+      () => createConsistentSqliteBackup({ databasePath: sourcePath, backupDirectory }),
+      /sqlite_backup_directory_permissions_unsafe/
+    );
+    assert.deepEqual(
+      (await (await import('node:fs/promises')).readdir(backupDirectory)),
+      [],
+      'unsafe destination must be rejected before any backup is created'
+    );
+  } finally {
     source.close();
     await rm(dir, { recursive: true, force: true });
   }
