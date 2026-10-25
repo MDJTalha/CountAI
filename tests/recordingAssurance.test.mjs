@@ -67,6 +67,44 @@ test('gaps and overlapping report windows cannot be labelled complete', () => {
   });
   assert.equal(overlap.windowContinuity, 'overlaps_detected');
   assert.equal(overlap.assessment, 'incomplete_report_windows');
+  assert.equal(overlap.expectedReportedSeconds, null);
+  assert.equal(overlap.recordedReportedSeconds, null);
+  assert.equal(overlap.reportedGapSeconds, null);
+  assert.equal(overlap.reportedCoveragePercent, null);
+});
+
+
+test('impossible signed counters are marked inconsistent and cannot inflate reported coverage', () => {
+  for (const [recordedSeconds, expectedSeconds] of [[3601, 3600], [-1, 3600], [10, 0], [1.5, 3600]]) {
+    const assessment = evaluateRecordingCoverageReports({
+      organizationId: 'org-1', siteId: 'site-1', cameraId: 'camera-1',
+      reports: [report(windowStart, windowEnd, recordedSeconds, expectedSeconds)],
+      windowStart, windowEnd, now
+    });
+    assert.equal(assessment.invalidMetricReportCount, 1);
+    assert.equal(assessment.evaluatedReportCount, 0);
+    assert.equal(assessment.windowContinuity, 'inconsistent_report_metrics');
+    assert.equal(assessment.assessment, 'inconsistent_report_data');
+    assert.equal(assessment.reportedCoveragePercent, null);
+  }
+});
+
+test('aggregate counter overflow is inconclusive instead of producing imprecise coverage', () => {
+  const huge = Number.MAX_SAFE_INTEGER;
+  const assessment = evaluateRecordingCoverageReports({
+    organizationId: 'org-1', siteId: 'site-1', cameraId: 'camera-1',
+    reports: [
+      report(windowStart, '2026-10-24T00:30:00.000Z', huge, huge),
+      report('2026-10-24T00:30:00.000Z', windowEnd, huge, huge)
+    ], windowStart, windowEnd, now
+  });
+  assert.equal(assessment.aggregateMetricsSafe, false);
+  assert.equal(assessment.windowContinuity, 'inconsistent_report_metrics');
+  assert.equal(assessment.assessment, 'inconsistent_report_data');
+  assert.equal(assessment.expectedReportedSeconds, null);
+  assert.equal(assessment.recordedReportedSeconds, null);
+  assert.equal(assessment.reportedGapSeconds, null);
+  assert.equal(assessment.reportedCoveragePercent, null);
 });
 
 test('missing or truncated reports remain inconclusive', () => {
