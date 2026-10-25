@@ -69,3 +69,12 @@ test('autonomous learning workbench accepts authorized sources but does not clai
   assert.match(learning, /Direct continuous capture from network CCTV requires the stream adapter/);
   assert.match(readme, /does not yet extract text from PDFs, run image\/video inference/);
 });
+
+
+test('CCTV-first console keeps keyboard focus visible and respects reduced-motion preferences', () => {
+  assert.match(styles, /:focus-visible/);
+  assert.match(styles, /outline: 3px solid/);
+  assert.match(styles, /prefers-reduced-motion: reduce/);
+  assert.match(styles, /animation-duration: 0\\.01ms/);
+  assert.match(styles, /transition-duration: 0\\.01ms/);
+});
