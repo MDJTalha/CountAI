@@ -50,3 +50,32 @@ jobs:
 
       - name: Verify PWA service worker was generated
         run: test -f dist/sw.js
+
+      - name: Build production container
+        run: docker build --pull -t countai:ci .
+
+      - name: Smoke-test production container
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() { docker rm -f countai-ci >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run -d --name countai-ci -p 127.0.0.1:18787:8787 \
+            -e NODE_ENV=production \
+            -e PORT=8787 \
+            -e SPAIS_EVENTS_DB_PATH=/tmp/countai/events.sqlite \
+            -e COUNTAI_BACKUP_DIR=/tmp/countai/backups \
+            -e SPAIS_AUTH_ISSUER=https://identity.example.test/ \
+            -e SPAIS_AUTH_AUDIENCE=countai-api \
+            -e SPAIS_AUTH_JWKS_URL=https://identity.example.test/.well-known/jwks.json \
+            -e COUNTAI_LEARNING_SOURCE_RETENTION_DAYS=90 \
+            countai:ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18787/api/health >/tmp/countai-health.json; then
+              break
+            fi
+            sleep 2
+          done
+          node -e "const h=require('/tmp/countai-health.json'); if(h.ok!==true || h.service!=='countai-api') process.exit(1)"
+          curl --fail --silent http://127.0.0.1:18787/api/v1/spais/contracts >/dev/null
+          docker inspect --format='{{.State.Running}}' countai-ci | grep -qx true
