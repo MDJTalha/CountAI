@@ -28,6 +28,15 @@ export async function createConsistentSqliteBackup({
 
   const outputDirectory = resolve(backupDirectory);
   await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
+  // mkdir's mode is ignored when the directory already exists. Fail closed
+  // rather than writing a backup into a directory other local users can read.
+  // The private directory also prevents access during the short interval
+  // between VACUUM INTO creating the file and chmod restricting the file mode.
+  const directoryInfo = await stat(outputDirectory);
+  if (process.platform !== 'win32' && (directoryInfo.mode & 0o077) !== 0) {
+    throw fail('sqlite_backup_directory_permissions_unsafe');
+  }
+
   const timestamp = (now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date())
     .toISOString().replace(/[:.]/g, '-');
   const outputPath = join(outputDirectory, `countai-${timestamp}-${randomUUID()}.sqlite`);
