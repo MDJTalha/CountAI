@@ -191,7 +191,7 @@ export function LiveCounter() {
       ctx.lineWidth = Math.max(2, canvas.width / 600);
       ctx.strokeRect(x, y, w, h);
 
-      const label = formatDetectionOverlayLabel(d.category, d.confidence, showDiagnosticConfidence);
+      const label = formatDetectionOverlayLabel(d.category, d.confidence, showDiagnosticConfidence, d.counted === true);
       ctx.font = `600 ${Math.max(13, canvas.width / 65)}px system-ui`;
       const labelY = Math.max(0, y - 25);
       ctx.fillStyle = d.counted ? '#e6ae52' : '#42cdb1';
