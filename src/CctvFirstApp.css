@@ -113,3 +113,21 @@
 .learning-source-list .learning-candidate p { margin:8px 0; color:#637a70; font-size:11px; line-height:1.65; }
 .learning-tip { display:flex; gap:9px; align-items:flex-start; margin-top:15px; padding:12px; border:1px solid #dbe9e1; border-radius:10px; background:#f2f8f4; color:#507665; font-size:10px; line-height:1.7; }
 .learning-tip svg { flex-shrink:0; margin-top:2px; }
+
+
+/* Keyboard accessibility and motion preferences for the CCTV-first console. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid #137c68;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
