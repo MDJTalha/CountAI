@@ -32,6 +32,7 @@ export function CctvFirstApp() {
   const [active, setActive] = useState<Workspace>('overview');
 
   return <div className="cctv-app">
+    <a className="cctv-skip-link" href="#main-content">Skip to main content</a>
     <aside className="cctv-sidebar">
       <a className="cctv-brand" href="#overview" onClick={event => { event.preventDefault(); setActive('overview'); }}>
         <span className="cctv-brand-mark"><Eye size={22} /></span>
@@ -52,7 +53,7 @@ export function CctvFirstApp() {
       </div>
     </aside>
 
-    <main className="cctv-main">
+    <main id="main-content" className="cctv-main" tabIndex={-1}>
       <header className="cctv-topbar">
         <div><span className="cctv-eyebrow">SURVEILLANCE & OPERATIONAL INTELLIGENCE</span><strong>{navigation.find(item => item.id === active)?.label}</strong></div>
         <div className="cctv-top-status"><span className="cctv-status-dot" /> Integration not configured</div>
