@@ -72,6 +72,10 @@ npm run server
 
 A reproducible crossing-event metric harness is available in [the counting benchmark guide](docs/COUNTING_BENCHMARK.md). It reports event matching and count-error metrics from reviewed ground truth and model predictions; it does not assert production accuracy without representative held-out clips and agreed thresholds.
 
+## Deployment
+
+A hardened single-host Docker/Compose deployment package and operator runbook are available in [Production Deployment Runbook](docs/DEPLOYMENT_RUNBOOK.md). Start with `.env.example`, replace all identity-provider placeholders, and keep the service behind a managed HTTPS gateway. The Compose configuration binds the application to loopback and persists SQLite and backups in separate volumes. A packaged container is not a live deployment or proof of camera/NVR integration; follow the runbook and acceptance gates before production sign-off.
+
 ## Acceptance evidence
 
 Use [the system acceptance evidence matrix](docs/ACCEPTANCE_EVIDENCE_MATRIX.md) to record deployment-specific proof for browser acceptance, tenant/site isolation, real camera/NVR integration, counting accuracy, backup/restore, and governed learning. A green CI run is not a substitute for these environment-specific gates.
