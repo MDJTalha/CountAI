@@ -114,11 +114,18 @@ test('edge agent rejects unsafe endpoint URLs and recorder payloads with extra f
     privateKey: pair.privateKey
   }), error => error.code === 'unsafe_endpoint_url');
 
+  let invalidRecorderFetchCalled = false;
   await assert.rejects(() => runConnectorOnce({
     serverUrl: 'https://spais.example.test',
     organizationId: 'org-1', siteId: 'site-1', connectorId: 'connector-1',
     privateKey: pair.privateKey, recorderStatusUrl: 'https://recorder.example.test/status#'
+  }, {
+    fetchImpl: async () => {
+      invalidRecorderFetchCalled = true;
+      throw new Error('network must not be called for invalid configuration');
+    }
   }), error => error.code === 'unsafe_endpoint_url');
+  assert.equal(invalidRecorderFetchCalled, false, 'invalid recorder URL must be rejected before sending the heartbeat');
 
   const fetchImpl = async (url) => {
     if (String(url) === 'https://recorder.example.test/status') {
