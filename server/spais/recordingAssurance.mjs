@@ -54,8 +54,17 @@ export function evaluateRecordingCoverageReports({
 
   const full = relevant.filter(report => report.reportStart >= start && report.reportEnd <= end);
   const partialReportCount = relevant.length - full.length;
-  const expectedReportedSeconds = full.reduce((sum, report) => sum + report.payload.expectedSeconds, 0);
-  const recordedReportedSeconds = full.reduce((sum, report) => sum + report.payload.recordedSeconds, 0);
+  // A signed report is still untrusted input for arithmetic purposes. Reject impossible
+  // counters rather than allowing negative or over-expected values to inflate coverage.
+  const invalidMetricReports = full.filter(report => {
+    const expected = report.payload.expectedSeconds;
+    const recorded = report.payload.recordedSeconds;
+    return !Number.isSafeInteger(expected) || expected <= 0 ||
+      !Number.isSafeInteger(recorded) || recorded < 0 || recorded > expected;
+  });
+  const validMetricReports = full.filter(report => !invalidMetricReports.includes(report));
+  const expectedReportedSeconds = validMetricReports.reduce((sum, report) => sum + report.payload.expectedSeconds, 0);
+  const recordedReportedSeconds = validMetricReports.reduce((sum, report) => sum + report.payload.recordedSeconds, 0);
   const reportedGapSeconds = Math.max(0, expectedReportedSeconds - recordedReportedSeconds);
   const reportedCoveragePercent = expectedReportedSeconds > 0
     ? Math.round((recordedReportedSeconds / expectedReportedSeconds) * 10000) / 100
@@ -71,6 +80,7 @@ export function evaluateRecordingCoverageReports({
   let windowContinuity = 'complete';
   if (reportsTruncated) windowContinuity = 'report_limit_reached';
   else if (relevant.length === 0) windowContinuity = 'no_reports';
+  else if (invalidMetricReports.length > 0) windowContinuity = 'inconsistent_report_metrics';
   else if (hasOverlap) windowContinuity = 'overlaps_detected';
   else if (hasGap || boundaryGap) windowContinuity = 'gaps_detected';
   else if (partialReportCount > 0) windowContinuity = 'partial_windows_excluded';
@@ -85,6 +95,7 @@ export function evaluateRecordingCoverageReports({
 
   let assessment = 'no_reports';
   if (reportsTruncated) assessment = 'incomplete_report_windows';
+  else if (invalidMetricReports.length > 0) assessment = 'inconsistent_report_data';
   else if (full.length > 0 && expectedReportedSeconds > 0) {
     assessment = windowContinuity === 'complete'
       ? (reportedCoveragePercent >= 99.5 ? 'reported_coverage_high' : 'reported_coverage_gap')
@@ -100,7 +111,8 @@ export function evaluateRecordingCoverageReports({
     cameraId: cameraId ?? null,
     requestedWindow: { start: new Date(start).toISOString(), end: new Date(end).toISOString() },
     reportCount: relevant.length,
-    evaluatedReportCount: full.length,
+    evaluatedReportCount: validMetricReports.length,
+    invalidMetricReportCount: invalidMetricReports.length,
     partialReportCount,
     expectedReportedSeconds,
     recordedReportedSeconds,
