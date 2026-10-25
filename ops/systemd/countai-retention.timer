@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily CountAI learning-source retention schedule
+
+[Timer]
+OnCalendar=*-*-* 03:10:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=countai-retention.service
+
+[Install]
+WantedBy=timers.target

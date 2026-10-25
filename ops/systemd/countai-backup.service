@@ -1,0 +1,16 @@
+[Unit]
+Description=Create and export a verified CountAI SQLite backup
+Wants=docker.service
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/countai
+ExecStart=/opt/countai/ops/export-backup.sh /mnt/secure-backups/countai
+User=root
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/mnt/secure-backups/countai

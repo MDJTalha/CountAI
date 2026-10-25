@@ -1,0 +1,15 @@
+[Unit]
+Description=Expire CountAI learning sources according to configured retention
+Wants=docker.service
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/countai
+ExecStart=/usr/bin/docker compose exec -T countai node scripts/expire-learning-sources.mjs
+User=root
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict

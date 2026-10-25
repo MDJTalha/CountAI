@@ -76,6 +76,10 @@ A reproducible crossing-event metric harness is available in [the counting bench
 
 A hardened single-host Docker/Compose deployment package and operator runbook are available in [Production Deployment Runbook](docs/DEPLOYMENT_RUNBOOK.md). Start with `.env.example`, replace all identity-provider placeholders, and keep the service behind a managed HTTPS gateway. The Compose configuration binds the application to loopback and persists SQLite and backups in separate volumes. A packaged container is not a live deployment or proof of camera/NVR integration; follow the runbook and acceptance gates before production sign-off.
 
+## Backup and scheduled maintenance
+
+Use the [backup export and maintenance guide](docs/OPERATIONS_BACKUP.md) to export verified SQLite snapshots to a separately managed mount and schedule retention/backup jobs. Treat an export as successful only when the helper exits zero and records its SHA-256 digest. Learning media needs a coordinated backup plan as well; database-only backup is not complete disaster recovery.
+
 ## Acceptance evidence
 
 Use [the system acceptance evidence matrix](docs/ACCEPTANCE_EVIDENCE_MATRIX.md) to record deployment-specific proof for browser acceptance, tenant/site isolation, real camera/NVR integration, counting accuracy, backup/restore, and governed learning. A green CI run is not a substitute for these environment-specific gates.
