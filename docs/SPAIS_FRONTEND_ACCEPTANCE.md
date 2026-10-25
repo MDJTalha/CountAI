@@ -12,11 +12,13 @@ This checklist is the browser-level acceptance gate for the unified frontend. CI
 
 ## Navigation and responsive behavior
 
-- [ ] Navigate Overview, Live Counter, Photo Review, History, Analytics, Governance/AI/SOPs, and Sites & Cameras using keyboard and pointer.
-- [ ] Confirm the selected navigation item is announced and visibly identifiable.
+- [ ] On the active CCTV-first entrypoint, navigate Overview, Live monitoring, Sites & cameras, and Incidents & AI using keyboard and pointer.
+- [ ] On initial keyboard navigation, confirm the visible “Skip to main content” link bypasses the sidebar and moves focus to the main workspace; verify the destination retains a visible focus indicator.
+- [ ] Confirm the selected navigation item is announced and visibly identifiable, including its current-page state.
 - [ ] Test desktop, tablet, and narrow mobile widths; ensure forms, tables, status labels, and actions remain usable without unintended horizontal overflow.
 - [ ] Verify loading, empty, success, validation, permission-denied, network-error, and server-error states.
 - [ ] Verify modal dialogs can be opened, completed, cancelled, and closed using keyboard controls.
+- [ ] Run the counting/photo/history workflows only in the explicitly configured counting workspace or entrypoint under test; do not infer their availability from the CCTV-first navigation.
 
 ## Counting and local history
 
