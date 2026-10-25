@@ -59,7 +59,7 @@ export function verifySpaisBearerToken(authorization, {
   if (claims.nbf !== undefined && (!Number.isInteger(claims.nbf) || claims.nbf > nowSeconds)) {
     return deny('token_not_yet_valid');
   }
-  if (typeof claims.sub !== 'string' || !claims.sub.trim()) return deny('subject_required');
+  if (typeof claims.sub !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(claims.sub)) return deny('subject_required');
   if (!Array.isArray(claims.organizationIds) || !Array.isArray(claims.permissions)) {
     return deny('tenant_claims_required');
   }

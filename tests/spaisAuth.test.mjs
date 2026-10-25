@@ -76,3 +76,13 @@ test('rejects duplicate or malformed tenant scope claims', () => {
   assert.equal(verifySpaisBearerToken('Bearer ' + token({ ...validClaims, sitesByOrganization: { 'org-other': ['site-1'] } }), config).reason, 'invalid_site_claim');
   assert.equal(verifySpaisBearerToken('Bearer ' + token({ ...validClaims, sitesByOrganization: { 'org-1': ['bad site'] } }), config).reason, 'invalid_site_claim');
 });
+
+
+test('rejects subject identifiers that do not match the OIDC verifier contract', () => {
+  for (const sub of ['', '   ', 'operator with spaces', '.starts-with-punctuation', 'x'.repeat(129), 'operator/1']) {
+    assert.equal(verifySpaisBearerToken('Bearer ' + token({ ...validClaims, sub }), config).reason, 'subject_required', `Expected invalid subject to be rejected: ${JSON.stringify(sub)}`);
+  }
+  for (const sub of ['operator-1', 'user.name:2', 'org_user-3']) {
+    assert.equal(verifySpaisBearerToken('Bearer ' + token({ ...validClaims, sub }), config).authenticated, true);
+  }
+});
