@@ -15,8 +15,11 @@ function connectorError(code, message = code) {
 
 function validateUrl(value, { allowHttp = false, allowHttpLocalhost = false } = {}) {
   let url;
-  try { url = new URL(value); } catch { throw connectorError('invalid_endpoint_url'); }
-  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash ||
+  try {
+    if (typeof value !== 'string' || !value.trim()) throw new TypeError('invalid_endpoint_url');
+    url = new URL(value);
+  } catch { throw connectorError('invalid_endpoint_url'); }
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash || value.includes('#') ||
       [...url.searchParams.keys()].some(key => /(token|secret|password|credential|api.?key|access.?key)/i.test(key))) {
     throw connectorError('unsafe_endpoint_url');
   }
@@ -199,6 +202,11 @@ export async function runConnectorOnce(config, { fetchImpl = fetch, now = () => 
     ? validatePrivateKey(config.privateKey)
     : config.privateKey;
   if (!privateKey || privateKey.asymmetricKeyType !== 'rsa') throw connectorError('private_key_required');
+  // Validate every configured endpoint before any network activity. An invalid recorder URL
+  // must not allow the initial heartbeat to be sent before configuration is rejected.
+  if (config.recorderStatusUrl) {
+    validateUrl(config.recorderStatusUrl, { allowHttp: config.allowInsecureRecorderHttp === true });
+  }
   const timeoutMs = Number.isInteger(config.timeoutMs) ? Math.max(1000, Math.min(15000, config.timeoutMs)) : 5000;
   const telemetryUrl = serverUrl + '/api/v1/connectors/' + encodeURIComponent(config.connectorId) + '/telemetry';
   const results = [];
