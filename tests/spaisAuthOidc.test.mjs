@@ -94,7 +94,9 @@ test('OIDC verifier rejects non-HTTPS remote JWKS URLs and token-supplied key UR
   for (const unsafeUrl of [
     'https://user:password@identity.example.test/jwks',
     'https://identity.example.test/jwks?tenant=unexpected',
-    'https://identity.example.test/jwks#alternate'
+    'https://identity.example.test/jwks#alternate',
+    'https://identity.example.test/jwks?',
+    'https://identity.example.test/jwks#'
   ]) {
     clearSpaisJwksCacheForTests();
     const result = await verifySpaisBearerTokenAsync(`Bearer ${makeToken()}`, {
