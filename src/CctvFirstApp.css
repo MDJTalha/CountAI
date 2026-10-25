@@ -131,3 +131,28 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* Let keyboard and switch users bypass repeated navigation. */
+.cctv-skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1000;
+  transform: translateY(-160%);
+  padding: 10px 14px;
+  border: 2px solid #137c68;
+  border-radius: 8px;
+  background: #fff;
+  color: #102d28;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.cctv-skip-link:focus {
+  transform: translateY(0);
+}
+#main-content:focus {
+  outline: 3px solid #137c68;
+  outline-offset: 3px;
+}
