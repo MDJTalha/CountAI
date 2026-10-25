@@ -25,7 +25,7 @@
     "test:spais-contracts": "node --test tests/spaisContracts.test.mjs",
     "test:spais-auth": "node --test tests/spaisAuth.test.mjs",
     "test:spais-auth-oidc": "node --test tests/spaisAuthOidc.test.mjs",
-    "test": "npm run test:cctv-first-frontend && npm run test:engine && npm run test:analytics && npm run test:overlay-labels && npm run test:operational-events && npm run test:operational-event-store && npm run test:operational-events-sqlite && npm run test:operational-events-api && npm run test:connector-telemetry-api && npm run test:connector-agent && npm run test:recording-assurance && npm run test:incidents-api && npm run test:spais-sops-api && npm run test:learning-candidates-api && npm run test:learning-sources && npm run test:learning-sources-api && npm run test:learning-evaluations-api && npm run test:live-sessions && npm run test:spais-contracts && npm run test:spais-auth && npm run test:spais-auth-oidc && npm run test:spais-resources-api && npm run test:detection-enhancement && npm run test:camera-health && npm run test:camera-health-history && npm run test:security-controls && npm run test:security-controls-api && npm run build && npm run test:pwa-build && npm run test:server && npm run test:sqlite-backup",
+    "test": "npm run test:cctv-first-frontend && npm run test:engine && npm run test:analytics && npm run test:overlay-labels && npm run test:operational-events && npm run test:operational-event-store && npm run test:operational-events-sqlite && npm run test:operational-events-api && npm run test:connector-telemetry-api && npm run test:connector-agent && npm run test:recording-assurance && npm run test:incidents-api && npm run test:spais-sops-api && npm run test:learning-candidates-api && npm run test:learning-sources && npm run test:learning-sources-api && npm run test:learning-evaluations-api && npm run test:live-sessions && npm run test:spais-contracts && npm run test:spais-auth && npm run test:spais-auth-oidc && npm run test:spais-resources-api && npm run test:detection-enhancement && npm run test:camera-health && npm run test:camera-health-history && npm run test:security-controls && npm run test:security-controls-api && npm run build && npm run test:pwa-build && npm run test:server && npm run test:sqlite-backup && npm run test:sqlite-restore-drill",
     "test:cctv-first-frontend": "node --test tests/cctvFirstFrontend.test.mjs",
     "test:analytics": "node --test tests/sessionAnalytics.test.mjs",
     "test:overlay-labels": "node --test tests/detectionOverlay.test.mjs",
@@ -40,7 +40,9 @@
     "test:learning-candidates-api": "node --test tests/learningCandidatesApi.test.mjs",
     "test:learning-evaluations-api": "node --test tests/learningEvaluationsApi.test.mjs",
     "test:learning-sources": "node --test tests/learningSources.test.mjs",
-    "test:learning-sources-api": "node --test tests/learningSourcesApi.test.mjs"
+    "test:learning-sources-api": "node --test tests/learningSourcesApi.test.mjs",
+    "maintenance:verify-sqlite-restore": "node scripts/verify-sqlite-restore.mjs",
+    "test:sqlite-restore-drill": "node --test tests/sqliteRestoreDrill.test.mjs"
   },
   "dependencies": {
     "@tensorflow-models/coco-ssd": "^2.2.3",
