@@ -15,7 +15,10 @@ function connectorError(code, message = code) {
 
 function validateUrl(value, { allowHttp = false, allowHttpLocalhost = false } = {}) {
   let url;
-  try { url = new URL(value); } catch { throw connectorError('invalid_endpoint_url'); }
+  try {
+    if (typeof value !== 'string' || !value.trim()) throw new TypeError('invalid_endpoint_url');
+    url = new URL(value);
+  } catch { throw connectorError('invalid_endpoint_url'); }
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash || value.includes('#') ||
       [...url.searchParams.keys()].some(key => /(token|secret|password|credential|api.?key|access.?key)/i.test(key))) {
     throw connectorError('unsafe_endpoint_url');
