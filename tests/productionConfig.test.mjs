@@ -42,7 +42,9 @@ test('production configuration gate rejects non-HTTPS JWKS and weak HS256 secret
   for (const unsafeUrl of [
     'https://user:password@identity.example.test/jwks',
     'https://identity.example.test/jwks?access_token=secret',
-    'https://identity.example.test/jwks#private-fragment'
+    'https://identity.example.test/jwks#private-fragment',
+    'https://identity.example.test/jwks?',
+    'https://identity.example.test/jwks#'
   ]) {
     const unsafe = validateProductionConfig({ ...validProduction, SPAIS_AUTH_JWKS_URL: unsafeUrl });
     assert.ok(unsafe.errors.some(error => error.code === 'jwks_url_components_forbidden'), unsafeUrl);
