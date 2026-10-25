@@ -518,8 +518,10 @@ const server = createServer(async (req, res) => {
       const requestedLimit = Number(url.searchParams.get('limit') || 100);
       const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 100;
       const scopedSites = authentication.principal.sitesByOrganization;
-      const resourceIds = resourceType === 'site' && scopedSites && Object.hasOwn(scopedSites, organizationId)
-        ? scopedSites[organizationId]
+      // Site inventory has no implicit organization-wide scope. A missing site claim
+      // must return no records rather than fall through to an unrestricted store query.
+      const resourceIds = resourceType === 'site'
+        ? (scopedSites && Object.hasOwn(scopedSites, organizationId) ? scopedSites[organizationId] : [])
         : undefined;
       const resources = await resourceStore.list({ organizationId, resourceType, siteId, resourceIds, limit });
       return json(res, 200, { organizationId, resourceType, resources, count: resources.length, limit });

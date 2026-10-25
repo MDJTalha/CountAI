@@ -20,6 +20,7 @@ function token({
   sub = 'operator-1',
   organizationIds = ['org-1'],
   sitesByOrganization = { 'org-1': ['site-1'] },
+  includeSiteScope = true,
   permissions = ['site:read', 'site:manage', 'camera:read', 'camera:manage', 'connector:read', 'connector:manage', 'audit:read']
 } = {}) {
   const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -27,7 +28,9 @@ function token({
   const payload = encode({
     iss: issuer, aud: audience, sub,
     exp: Math.floor(Date.now() / 1000) + 300,
-    organizationIds, sitesByOrganization, permissions
+    organizationIds,
+    ...(includeSiteScope ? { sitesByOrganization } : {}),
+    permissions
   });
   const signature = createHmac('sha256', secret).update(header + '.' + payload).digest('base64url');
   return `${header}.${payload}.${signature}`;
@@ -130,6 +133,15 @@ test('site, camera and connector metadata require verified identity and enforce 
   const scopedSites = await fetch(`${baseUrl}/api/v1/organizations/org-1/sites`, { headers: auth() });
   assert.equal(scopedSites.status, 200);
   assert.deepEqual((await scopedSites.json()).resources.map(item => item.id), ['site-1']);
+
+  // Organization access alone must not imply access to every site.
+  const noSiteScope = { includeSiteScope: false, permissions: ['site:read'] };
+  const unscopedSiteList = await fetch(`${baseUrl}/api/v1/organizations/org-1/sites`, { headers: auth(noSiteScope) });
+  assert.equal(unscopedSiteList.status, 200);
+  assert.deepEqual((await unscopedSiteList.json()).resources, []);
+
+  const unscopedSingleSite = await fetch(`${baseUrl}/api/v1/organizations/org-1/sites/site-1`, { headers: auth(noSiteScope) });
+  assert.equal(unscopedSingleSite.status, 403);
 
   const allowedSite = await fetch(`${baseUrl}/api/v1/organizations/org-1/sites/site-1`, { headers: auth() });
   assert.equal(allowedSite.status, 200);
