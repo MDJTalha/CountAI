@@ -153,5 +153,6 @@
   transform: translateY(0);
 }
 #main-content:focus {
-  outline: none;
+  outline: 3px solid #137c68;
+  outline-offset: 3px;
 }
