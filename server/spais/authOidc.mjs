@@ -57,7 +57,7 @@ function validateJwksUrl(value) {
   try {
     const url = new URL(value);
     const localHttp = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-    if (url.username || url.password || url.search || url.hash) return null;
+    if (url.username || url.password || url.search || url.hash || value.includes('?') || value.includes('#')) return null;
     return url.protocol === 'https:' || localHttp ? url.href : null;
   } catch {
     return null;
