@@ -202,6 +202,11 @@ export async function runConnectorOnce(config, { fetchImpl = fetch, now = () => 
     ? validatePrivateKey(config.privateKey)
     : config.privateKey;
   if (!privateKey || privateKey.asymmetricKeyType !== 'rsa') throw connectorError('private_key_required');
+  // Validate every configured endpoint before any network activity. An invalid recorder URL
+  // must not allow the initial heartbeat to be sent before configuration is rejected.
+  if (config.recorderStatusUrl) {
+    validateUrl(config.recorderStatusUrl, { allowHttp: config.allowInsecureRecorderHttp === true });
+  }
   const timeoutMs = Number.isInteger(config.timeoutMs) ? Math.max(1000, Math.min(15000, config.timeoutMs)) : 5000;
   const telemetryUrl = serverUrl + '/api/v1/connectors/' + encodeURIComponent(config.connectorId) + '/telemetry';
   const results = [];
