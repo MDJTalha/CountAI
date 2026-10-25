@@ -1,0 +1,40 @@
+services:
+  countai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: countai:local
+    container_name: countai
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "8787"
+      SPAIS_EVENTS_DB_PATH: /var/lib/countai/events.sqlite
+      COUNTAI_BACKUP_DIR: /var/backups/countai
+      COUNTAI_LEARNING_MEDIA_DIR: /var/lib/countai/learning-media
+    ports:
+      # Bind only to loopback; terminate HTTPS at a separately managed reverse proxy.
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - countai-data:/var/lib/countai
+      - countai-backups:/var/backups/countai
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  countai-data:
+  countai-backups:
