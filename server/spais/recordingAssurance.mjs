@@ -104,6 +104,7 @@ export function evaluateRecordingCoverageReports({
   let assessment = 'no_reports';
   if (reportsTruncated) assessment = 'incomplete_report_windows';
   else if (invalidMetricReports.length > 0 || !aggregateMetricsSafe) assessment = 'inconsistent_report_data';
+  else if (windowContinuity === 'overlaps_detected' || windowContinuity === 'gaps_detected' || windowContinuity === 'partial_windows_excluded') assessment = 'incomplete_report_windows';
   else if (full.length > 0 && expectedReportedSeconds > 0) {
     assessment = windowContinuity === 'complete'
       ? (reportedCoveragePercent >= 99.5 ? 'reported_coverage_high' : 'reported_coverage_gap')
