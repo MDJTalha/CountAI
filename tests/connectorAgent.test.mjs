@@ -103,6 +103,12 @@ test('edge agent rejects unsafe endpoint URLs and recorder payloads with extra f
   }), error => error.code === 'https_required');
 
   await assert.rejects(() => runConnectorOnce({
+    serverUrl: 123,
+    organizationId: 'org-1', siteId: 'site-1', connectorId: 'connector-1',
+    privateKey: pair.privateKey
+  }), error => error.code === 'invalid_endpoint_url');
+
+  await assert.rejects(() => runConnectorOnce({
     serverUrl: 'https://spais.example.test#',
     organizationId: 'org-1', siteId: 'site-1', connectorId: 'connector-1',
     privateKey: pair.privateKey
