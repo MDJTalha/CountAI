@@ -63,11 +63,16 @@ export function evaluateRecordingCoverageReports({
       !Number.isSafeInteger(recorded) || recorded < 0 || recorded > expected;
   });
   const validMetricReports = full.filter(report => !invalidMetricReports.includes(report));
-  const expectedReportedSeconds = validMetricReports.reduce((sum, report) => sum + report.payload.expectedSeconds, 0);
-  const recordedReportedSeconds = validMetricReports.reduce((sum, report) => sum + report.payload.recordedSeconds, 0);
-  const reportedGapSeconds = Math.max(0, expectedReportedSeconds - recordedReportedSeconds);
-  const reportedCoveragePercent = expectedReportedSeconds > 0
-    ? Math.round((recordedReportedSeconds / expectedReportedSeconds) * 10000) / 100
+  const expectedTotal = validMetricReports.reduce((sum, report) => sum + report.payload.expectedSeconds, 0);
+  const recordedTotal = validMetricReports.reduce((sum, report) => sum + report.payload.recordedSeconds, 0);
+  // Individually safe integers can still overflow when summed across many reports.
+  const aggregateMetricsSafe = Number.isSafeInteger(expectedTotal) &&
+    Number.isSafeInteger(recordedTotal) && recordedTotal <= expectedTotal;
+  const expectedReportedSeconds = aggregateMetricsSafe ? expectedTotal : null;
+  const recordedReportedSeconds = aggregateMetricsSafe ? recordedTotal : null;
+  const reportedGapSeconds = aggregateMetricsSafe ? Math.max(0, expectedTotal - recordedTotal) : null;
+  const reportedCoveragePercent = aggregateMetricsSafe && expectedTotal > 0
+    ? Math.round((recordedTotal / expectedTotal) * 10000) / 100
     : null;
 
   let hasGap = false;
@@ -80,7 +85,7 @@ export function evaluateRecordingCoverageReports({
   let windowContinuity = 'complete';
   if (reportsTruncated) windowContinuity = 'report_limit_reached';
   else if (relevant.length === 0) windowContinuity = 'no_reports';
-  else if (invalidMetricReports.length > 0) windowContinuity = 'inconsistent_report_metrics';
+  else if (invalidMetricReports.length > 0 || !aggregateMetricsSafe) windowContinuity = 'inconsistent_report_metrics';
   else if (hasOverlap) windowContinuity = 'overlaps_detected';
   else if (hasGap || boundaryGap) windowContinuity = 'gaps_detected';
   else if (partialReportCount > 0) windowContinuity = 'partial_windows_excluded';
@@ -95,7 +100,7 @@ export function evaluateRecordingCoverageReports({
 
   let assessment = 'no_reports';
   if (reportsTruncated) assessment = 'incomplete_report_windows';
-  else if (invalidMetricReports.length > 0) assessment = 'inconsistent_report_data';
+  else if (invalidMetricReports.length > 0 || !aggregateMetricsSafe) assessment = 'inconsistent_report_data';
   else if (full.length > 0 && expectedReportedSeconds > 0) {
     assessment = windowContinuity === 'complete'
       ? (reportedCoveragePercent >= 99.5 ? 'reported_coverage_high' : 'reported_coverage_gap')
@@ -113,6 +118,7 @@ export function evaluateRecordingCoverageReports({
     reportCount: relevant.length,
     evaluatedReportCount: validMetricReports.length,
     invalidMetricReportCount: invalidMetricReports.length,
+    aggregateMetricsSafe,
     partialReportCount,
     expectedReportedSeconds,
     recordedReportedSeconds,
