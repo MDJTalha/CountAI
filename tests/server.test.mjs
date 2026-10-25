@@ -120,7 +120,7 @@ test('content-hashed production assets receive immutable caching', async () => {
   const { readdir } = await import('node:fs/promises');
   const assetDirectory = new URL('../dist/assets/', import.meta.url);
   const assets = await readdir(assetDirectory);
-  const hashedAsset = assets.find(name => /-[A-Za-z0-9_-]{8,}\\.(?:js|css|woff2?|png|svg)$/i.test(name));
+  const hashedAsset = assets.find(name => /-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|svg)$/i.test(name));
   assert.ok(hashedAsset, 'production build should contain a content-hashed asset');
 
   const response = await fetch(`${baseUrl}/assets/${encodeURIComponent(hashedAsset)}`);
